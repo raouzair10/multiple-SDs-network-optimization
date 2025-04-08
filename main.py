@@ -146,7 +146,6 @@ for i in range(MAX_EPISODES):
     s_traj_greedy = []
 
     for j in range(MAX_EP_STEPS):
-        print(s_ddpg)
         ######################## DDPG ########################
         a_ddpg = ddpg_agent.choose_action(s_ddpg)
         a_ddpg = np.clip(np.random.normal(a_ddpg, var), 0, 1)  # add randomness to action selection for exploration
@@ -180,9 +179,8 @@ for i in range(MAX_EPISODES):
         s_ddpg = s_ddpg_
 
         if j == MAX_EP_STEPS-1:
-        #     print('Episode:', i, ' DDPG: %i' % int(ep_reward_ddpg), 'TD3: %i' % int(ep_reward_td3), 'PPO: %i' % int(ep_reward_ppo),
-        #            'Greedy: %i' % int(ep_reward_greedy), 'Random: %i' % int(ep_reward_random))
             print('Avg EE for Episode:', i, ' DDPG: %i' % int(ep_ee_ddpg/MAX_EP_STEPS), 'Greedy: %i' % int(ep_ee_greedy/MAX_EP_STEPS),  'Random: %i' % int(ep_ee_random/MAX_EP_STEPS))
+    
     ep_reward_ddpg = np.reshape(ep_reward_ddpg/MAX_EP_STEPS, (1,))
     ep_rewardall_ddpg.append(ep_reward_ddpg)
     eh_reward_ddpg = np.reshape(eh_reward_ddpg / MAX_EP_STEPS, (1,))

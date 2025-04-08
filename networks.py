@@ -6,9 +6,6 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 '''Actor and Critic Networks  for all the Algorithms'''
 
-#Architecture from experimental details section of the DDPG 
-#paper "Continuous control with deep reinforcement learning"
-#Lillicrap et. al. 2015
 class Actor(nn.Module):
     def __init__(self, s_dim, a_dim, a_max):
         super(Actor, self).__init__()
@@ -25,9 +22,6 @@ class Actor(nn.Module):
         x = torch.tanh(self.l3(x)) * self.a_max  
         return x 
 
-#Architecture from experimental details section of the DDPG
-#paper "Continuous control with deep reinforcement learning"
-#Lillicrap et. al. 2015
 class Critic(nn.Module):
     def __init__(self, s_dim, a_dim,trainable=True):
         super(Critic, self).__init__()

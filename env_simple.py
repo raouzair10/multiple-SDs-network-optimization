@@ -169,7 +169,7 @@ class Env_cellular():
         return reward, state_next, EHG, done, energy_efficiency,
 
     # Simulates a random policy where alphan is chosen randomly within feasible limits
-    def step_random(self,   state, j):
+    def step_random(self, state, j):
         hn = state[0,0]/self.noise
         hn0 = state[0,1]
         En = state[0,-1]
