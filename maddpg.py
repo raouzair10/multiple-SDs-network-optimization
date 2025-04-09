@@ -32,36 +32,13 @@ class Agent():
         for i in range(num_agents):
             self.update_network_parameters(tau=1, agent_index=i)
 
-    def choose_action(self, s):
-        sd_qualities = []
-        for sd_index in range(self.num_agents):
-            sd = []
-            sd.append(s[0][sd_index * 3])  # hn-SDj-PDi
-            sd.append(s[0][sd_index * 3 + 1])  # hn-SDj-BS
-            sd.append(s[0][sd_index * 3 + 2]) # battery level
-
-            sd = np.array(sd)
-            min_val = np.min(sd)
-            max_val = np.max(sd)
-
-            sd = (sd - min_val) / (max_val - min_val)
-            sd_quality = np.sum(sd)
-            sd_qualities.append(sd_quality)
-
-        # Choose SD with best quality
-        if np.random.rand() < 0.1: # 10% random selection.
-            best_sd_index = np.random.randint(self.num_agents - 1)
-        else:
-            best_sd_index = np.argmax(sd_qualities)
-
-        self.actors[best_sd_index].eval()
-        s_l = s[0][best_sd_index * (s.shape[1] // self.num_agents): (best_sd_index + 1) * (s.shape[1] // self.num_agents)]
-        s_l = np.append(s_l, s[0][-1])  # [[hn-SDj-PDi hn-SDj-BS battery-SDj hn-PDi-BS]]
-        s_local = T.FloatTensor(s_l.reshape(1, -1)).to(device)  # local state for each agent
-        a = self.actors[best_sd_index](s_local)
+    def choose_action(self, s, sd_index):
+        self.actors[sd_index].eval()
+        s = T.FloatTensor(s.reshape(1, -1)).to(device)
+        a = self.actors[sd_index](s)
         a = a.cpu().data.numpy().flatten()
-        self.actors[best_sd_index].train()
-        return best_sd_index, a
+        self.actors[sd_index].train()
+        return sd_index, a
 
     def remember(self, state, action, reward, state_):
         self.memory.store_transition(state, action, reward, state_)

@@ -95,6 +95,34 @@ else:   # simple (no diversity)
             # [[PD1-SD1 PD1-SD2]
             #  [PD2-SD1 PD2SD2]]
 
+def choose_SD(s):
+    sd_qualities = []
+    for sd_index in range(num_SDs):
+        sd = []
+        sd.append(s[0][sd_index * 3])  # hn-SDj-PDi
+        sd.append(s[0][sd_index * 3 + 1])  # hn-SDj-BS
+        sd.append(s[0][sd_index * 3 + 2]) # battery level
+
+        sd = np.array(sd)
+        min_val = np.min(sd)
+        max_val = np.max(sd)
+
+        sd = (sd - min_val) / (max_val - min_val)
+        sd_quality = np.sum(sd)
+        sd_qualities.append(sd_quality)
+
+    # Choose SD with best quality
+    if np.random.rand() < 0.1: # 10% random selection.
+        best_sd_index = np.random.randint(num_SDs - 1)
+    else:
+        best_sd_index = np.argmax(sd_qualities)
+    
+    s_l = s[0][best_sd_index * (s.shape[1] // num_SDs): (best_sd_index + 1) * (s.shape[1] // num_SDs)]
+    s_local = np.append(s_l, s[0][-1])  # [[hn-SDj-PDi hn-SDj-BS battery-SDj hn-PDi-BS]]
+
+    return best_sd_index, s_local
+        
+
 myenv = env_multiple_sd(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 #---------------------------------Initializing DDPG Agent--------------------------------------------------------------
@@ -146,7 +174,8 @@ for i in range(MAX_EPISODES):
 
     for j in range(MAX_EP_STEPS):
         ######################## DDPG ########################
-        a_ddpg = list(ddpg_agent.choose_action(s_ddpg))
+        sd_index, s_local_ddpg = choose_SD(s_ddpg)
+        a_ddpg = list(ddpg_agent.choose_action(s_local_ddpg, sd_index))
         a_ddpg[1] = np.clip(np.random.normal(a_ddpg[1], var), 0, 1)[0]
 
         r_ddpg, s_ddpg_, EHD, ee_ddpg = myenv.step(a_ddpg, s_ddpg / state_am, j + i)
