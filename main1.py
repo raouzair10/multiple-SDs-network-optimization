@@ -58,11 +58,10 @@ fading_PD_BS = np.random.uniform(low=0.6, high=0.99, size=(num_PDs))  # Fading b
 fading_PD_BS = np.around(fading_PD_BS, decimals=5)
 hnx = np.random.uniform(low=0.6, high=0.99, size=(num_PDs, num_SDs, L)) # fading values for PDs and antennas on SDs
 hnx = np.around(hnx, decimals=5)
-# [[[0.97583 0.74954]
-#   [0.90877 0.80627]]
-#  [[0.82154 0.96098]
-#   [0.6277  0.63398]]]
-
+# [[[0.90877 0.80627]
+#   [0.82154 0.96098]]
+#  [[0.6277  0.63398]
+#   [0.60789 0.92472]]]
 # [[[PD1-SD1-L1 PD1-SD1-L2]
 #   [PD1-SD2-L1 PD1-SD2-L2]]
 #  [[PD2-SD1-L1 PD2-SD1-L2]
@@ -70,13 +69,31 @@ hnx = np.around(hnx, decimals=5)
 
 fading_PD_SD = np.zeros((num_PDs, num_SDs))
 
-for i in range(num_PDs):
-    for j in range(num_SDs):
-        fading_PD_SD[i][j] = np.random.choice(hnx[i][j])
-# [[0.74954 0.90877]
-#  [0.96098 0.63398]]
-# [[PD1-SD1 PD1-SD2]
-#  [PD2-SD1 PD2SD2]]
+diversity_mode = int(input("Enter the diversity technique to harvest energy (0:Simple, 1:EGC, 2:MRC, 3:SC): "))
+
+if diversity_mode == 1: # EGC
+    for i in range(num_PDs):
+        for j in range(num_SDs):
+            fading_PD_SD[i][j] = np.sum(hnx[i][j]) ** 2 # square of sum
+
+elif diversity_mode == 2:   # MRC
+    for i in range(num_PDs):
+        for j in range(num_SDs):
+            fading_PD_SD[i][j] = np.sum(hnx[i][j] ** 2) # sum of squares
+
+elif diversity_mode == 3:   # SC
+    for i in range(num_PDs):
+        for j in range(num_SDs):
+            fading_PD_SD[i][j] = np.max(hnx[i][j] ** 2) # max squared value
+
+else:   # simple (no diversity) 
+    for i in range(num_PDs):
+        for j in range(num_SDs):
+            fading_PD_SD[i][j] = np.random.choice(hnx[i][j]) # random value
+            # [[0.90877 0.96098]
+            #  [0.63398 0.60789]]
+            # [[PD1-SD1 PD1-SD2]
+            #  [PD2-SD1 PD2SD2]]
 
 myenv = env_multiple_sd(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
