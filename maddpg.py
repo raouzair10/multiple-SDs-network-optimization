@@ -1,7 +1,7 @@
 import torch as T
 import torch.nn.functional as F
-from networks1 import Actor, Critic
-from buffer1 import ReplayBuffer
+from networks import Actor, Critic
+from buffer import ReplayBuffer
 import numpy as np
 
 device = T.device("cuda" if T.cuda.is_available() else "cpu")

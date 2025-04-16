@@ -4,14 +4,17 @@ import math
 dtype = np.float32
 
 class Env_cellular():
-    def __init__(self, MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs):
+    def __init__(self, MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, L, T, eta, Pn, Pmax, w_d, w_egc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs):
         self.emax = Emax        # Maximum battery capacity for SD
         self.num_PDs = num_PDs  # Number of Primary Devices (PDs)
         self.T = T              # Time duration for each time slot
+        self.L = L
         self.eta = eta          # Energy harvesting efficiency (between 0 and 1)
         self.Pn = Pn            # transmit power of PDs
         self.Pmax = Pmax        # Maximum transmit power of the SD
         self.w_csk = w_csk      # circuit and signal processing power for the SD
+        self.w_d = w_d
+        self.w_egc = w_egc
         self.s_dim = s_dim      # dimension of states
         self.MAX_EP_STEPS = MAX_EP_STEPS  # Max steps per episode
         self.num_SDs = num_SDs  # Number of Secondary Devices
@@ -76,22 +79,20 @@ class Env_cellular():
 
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
-                En_bar[sd_index] = action * min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0) - (1 - action) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
+                En_bar[sd_index] = action * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d) - (1 - action) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
             else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0)
-
+                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d)
 
         # Intermediate Variables for Reward Calculation
-        mu1 = self.eta * self.Pn * hn0 * h0[active_sd] / (1 + self.Pn * hn[active_sd]) # Represents the impact of energy harvesting on potential transmission power
-        mu2 = En_bar[active_sd] * h0[active_sd] / self.T / (1 + self.Pn * hn[active_sd])          # Adjusts for energy change per unit time
-        mu3 = self.w_csk * h0[active_sd] / (1 + self.Pn * hn[active_sd])               # Impact of circuit power consumption
+        mu1 = self.T * self.eta * self.Pn * hn0 * h0[active_sd] / (self.L * self.T * (1 + self.Pn * hn[active_sd])) # Represents the impact of energy harvesting on potential transmission power
+        mu2 = (En_bar[active_sd] + self.w_egc + self.w_d) * h0[active_sd] / (self.L * self.T * (1 + self.Pn * hn[active_sd]))          # Adjusts for energy change per unit time
+        mu3 = self.w_csk * h0[active_sd] / (self.L * (1 + self.Pn * hn[active_sd]))               # Impact of circuit power consumption
         
         # Calculate Optimal Time Allocation
-        wx0 = np.real(lambertw(math.exp(-1) * (mu1 - 1), k=0))
+        wx0 = np.real(lambertw(math.exp(-1) * (1 - mu1 - mu3), k=0))
         alphaxx = (mu1 - mu2) / (math.exp(wx0 + 1) - 1 + mu1 + mu3)
-        alpha01 = 1 - (En[active_sd] + En_bar[active_sd]) / (self.T * self.eta * self.Pn * hn0)
-        alpha02 = (self.T * self.eta * self.Pn * hn0 - En_bar[active_sd]) \
-                  / (self.T * self.eta * self.Pn * hn0 + self.T * self.Pmax + self.T * self.w_csk)
+        alpha01 = ((self.T * self.eta * self.Pn * hn0) - self.w_egc - self.w_d - En_bar[active_sd]) / (self.T * self.eta * self.Pn * hn0 + self.T * self.w_csk + self.L * self.Pmax)
+        alpha02 = ((self.T * self.eta * self.Pn * hn0) - self.w_egc - self.w_d - En_bar[active_sd] - En[active_sd]) / ((self.T * self.eta * self.Pn * hn0) + self.T * self.w_csk - self.T * self.L * self.w_csk)
         alphax2 = max(alpha01, alpha02)
         alphan = min(1, max(alphaxx, alphax2))  # Optimal fraction of time allocated for data transmission
         
@@ -105,7 +106,7 @@ class Env_cellular():
             reward = 0
         else:
             # Compute transmission power (P0n) and reward based on the Shannon capacity formula
-            P0n = (1 - alphan) * self.eta * self.Pn * hn0 / alphan - En_bar[active_sd] / alphan / self.T - self.w_csk
+            P0n = (1 - alphan) * self.eta * self.Pn * hn0 - self.w_egc - self.w_d / self.L * alphan - En_bar[active_sd] / self.L * alphan / self.T - self.w_csk
             if P0n < 0:
                 P0n = 0
             reward = alphan * np.log(1 + P0n * h0[active_sd] / (1 + self.Pn * hn[active_sd]))
@@ -133,7 +134,7 @@ class Env_cellular():
         state_next = np.reshape(state_next, (1, self.s_dim))
 
         # Represents the actual energy harvested during the time allocated for energy harvesting
-        EHD = (1 - alphan) * self.eta * self.T * self.Pn * hn0
+        EHD = (1 - alphan) * self.eta * self.T * self.Pn * hn0 / self.L
 
         return reward, state_next, EHD, energy_efficiency
 
@@ -153,9 +154,9 @@ class Env_cellular():
 
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
-                En_bar[sd_index] = alphan * min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
+                En_bar[sd_index] = alphan * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
             else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0)
+                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d)
 
         # Compute Reward
         reward = 0
@@ -208,9 +209,9 @@ class Env_cellular():
 
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
-                En_bar[sd_index] = alphan * min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
+                En_bar[sd_index] = alphan * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.w_csk)
             else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], self.T * self.eta * self.Pn * hn0)
+                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d)
 
         # Compute Reward
         reward = 0
@@ -243,11 +244,11 @@ class Env_cellular():
         state_next = np.reshape(state_next, (1, self.s_dim))
 
         # Represents the actual energy harvested during the time allocated for energy harvesting
-        EHR = (1 - alphan) * self.eta * self.T * self.Pn * hn0
+        EHG = (1 - alphan) * self.eta * self.T * self.Pn * hn0
 
-        return reward, state_next, EHR, energy_efficiency
+        return reward, state_next, EHG, energy_efficiency
 
     def reset(self):
         batter_ini = [self.emax] * self.num_SDs
         return batter_ini
-print("Simple Env Successfully Compiled")
+print("EGC Env Successfully Compiled")

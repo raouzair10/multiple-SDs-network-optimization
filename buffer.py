@@ -1,8 +1,3 @@
-
-'''This is the simple replay buffer class which samples experiences randomly and 
-stores the new experiences. The Prioritized Experience Replay and Composite Experience
-Replays are built on top of this class'''
-
 import numpy as np
 
 class ReplayBuffer():
@@ -13,15 +8,13 @@ class ReplayBuffer():
         self.new_state_memory = np.zeros((self.mem_size, input_shape))
         self.action_memory = np.zeros((self.mem_size, n_actions))
         self.reward_memory = np.zeros(self.mem_size)
-        self.terminal_memory = np.zeros(self.mem_size)
 
-    def store_transition(self, state, action, reward, state_, done):
+    def store_transition(self, state, action, reward, state_):
         index = self.mem_cntr % self.mem_size
         self.state_memory[index] = state
         self.action_memory[index] = action
-        self.reward_memory[index] = reward[0]
+        self.reward_memory[index] = reward
         self.new_state_memory[index] = state_
-        self.terminal_memory[index] = done
 
         self.mem_cntr += 1
 
@@ -34,6 +27,5 @@ class ReplayBuffer():
         actions = self.action_memory[batch]
         rewards = self.reward_memory[batch]
         states_ = self.new_state_memory[batch]
-        dones = self.terminal_memory[batch]
 
-        return states, actions, rewards, states_, dones
+        return states, actions, rewards, states_
