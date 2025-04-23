@@ -18,11 +18,11 @@ class Agent():
 
         self.memory = ReplayBuffer(max_size, input_dims, n_actions)
 
-        self.actors = [Actor(s_dim=(input_dims//num_agents)+1) for _ in range(num_agents)] #list of actors
-        self.critics = [Critic(s_dim=input_dims, a_dim=n_actions) for _ in range(num_agents)] #list of critics
+        self.actors = [Actor(s_dim=(input_dims//num_agents)+1).to(device) for _ in range(num_agents)] #list of actors
+        self.critics = [Critic(s_dim=input_dims, a_dim=n_actions).to(device) for _ in range(num_agents)] #list of critics
 
-        self.target_actors = [Actor(s_dim=(input_dims//num_agents)+1) for _ in range(num_agents)] #list of target actors
-        self.target_critics = [Critic(s_dim=input_dims, a_dim=n_actions) for _ in range(num_agents)] #list of target critics
+        self.target_actors = [Actor(s_dim=(input_dims//num_agents)+1).to(device) for _ in range(num_agents)] #list of target actors
+        self.target_critics = [Critic(s_dim=input_dims, a_dim=n_actions).to(device) for _ in range(num_agents)] #list of target critics
 
         self.actor_optimizers = [T.optim.Adam(actor.parameters(), lr=alpha) for actor in self.actors] #list of actor optimizers
         self.critic_optimizers = [T.optim.Adam(critic.parameters(), lr=beta) for critic in self.critics] #list of critic optimizers
