@@ -29,3 +29,4 @@ class ReplayBuffer():
         states_ = self.new_state_memory[batch]
 
         return states, actions, rewards, states_
+
