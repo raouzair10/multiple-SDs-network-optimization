@@ -7,15 +7,14 @@ from env_sc import Env_cellular as env_sc
 from env_mrc import Env_cellular as env_mrc
 import matplotlib.pyplot as plt
 import matplotlib
-
 from masac import MASAC
-matplotlib.use('TkAgg')
-from maddpg import Agent as MADDPG
+from maddpg import MADDPG
 from matd3 import MATD3
 from mappo import MAPPO
 import warnings;
 warnings.filterwarnings('ignore')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.patches import ConnectionPatch, Rectangle
@@ -76,7 +75,7 @@ np.random.seed(seed)
 
 ##################### Network Nodes Deployment #####################
 location_PDs = np.array([[0, 1],[0,1000]])
-location_SDs = np.array([[1,1],[2,2]])
+location_SDs = np.array([[2,2],[1,1]])
 
 # location_PDs = np.random.uniform(low=0, high=1000, size=(num_PDs, 2)).astype(int)
 # # [[548 715]
@@ -403,16 +402,13 @@ for i in range(MAX_EPISODES):
                 'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
                 'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
             
-            print('Average SR for Episode:', i,
-                'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
-                'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
-                'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
-                'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
-                'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
-                'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
-            
-            print()
-                  
+            # print('Average SR for Episode:', i,
+            #     'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
+            #     'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
+            #     'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
+            #     'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
+            #     'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
+            #     'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
             
     ep_reward_ddpg = np.reshape(ep_reward_ddpg / MAX_EP_STEPS, (1,))
     ep_rewardall_ddpg.append(ep_reward_ddpg)
@@ -432,6 +428,15 @@ for i in range(MAX_EPISODES):
     ep_dr_matd3 = np.reshape(ep_dr_matd3 / MAX_EP_STEPS, (1,))
     dr_rewardall_matd3.append(ep_dr_matd3)
 
+    ep_reward_masac = np.reshape(ep_reward_masac / MAX_EP_STEPS, (1,))
+    ep_rewardall_masac.append(ep_reward_masac)
+    eh_reward_masac = np.reshape(eh_reward_masac / MAX_EP_STEPS, (1,))
+    eh_rewardall_masac.append(eh_reward_masac)
+    ep_ee_masac = np.reshape(ep_ee_masac / MAX_EP_STEPS, (1,))
+    ee_rewardall_masac.append(ep_ee_masac)
+    ep_dr_masac = np.reshape(ep_dr_masac / MAX_EP_STEPS, (1,))
+    dr_rewardall_masac.append(ep_dr_masac)
+
     ep_reward_mappo = np.reshape(ep_reward_mappo / MAX_EP_STEPS, (1,))
     ep_rewardall_mappo.append(ep_reward_mappo)
     eh_reward_mappo = np.reshape(eh_reward_mappo / MAX_EP_STEPS, (1,))
@@ -440,10 +445,10 @@ for i in range(MAX_EPISODES):
     ee_rewardall_mappo.append(ep_ee_mappo)
     ep_dr_mappo = np.reshape(ep_dr_mappo / MAX_EP_STEPS, (1,))
     dr_rewardall_mappo.append(ep_dr_mappo)
-    sd1_count = np.reshape(sd1_count, (1,))
     sd1_freq.append(sd1_count)
-    sd2_count = np.reshape(sd2_count, (1,))
     sd2_freq.append(sd2_count)
+    print(sd1_freq)
+    print(sd2_freq)
     
     ep_reward_greedy = np.reshape(ep_reward_greedy/MAX_EP_STEPS, (1,))
     ep_rewardall_greedy.append(ep_reward_greedy)
@@ -469,9 +474,10 @@ for i in range(MAX_EPISODES):
 fig1, ax = plt.subplots()
 ax.plot(eh_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(eh_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
-ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75)
-ax.plot(eh_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+ax.plot(eh_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
+ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(eh_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Energy Harvested (J)")
 ax.legend()
@@ -495,9 +501,10 @@ plt.show()
 fig2, ax = plt.subplots()
 ax.plot(ee_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(ee_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
+ax.plot(ee_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
 ax.plot(ee_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color= 'orange')
-ax.plot(ee_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+ax.plot(ee_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Energy Efficiency (b/J)")
 ax.legend()
@@ -551,15 +558,15 @@ plt.show()
 fig3, ax = plt.subplots()
 ax.plot(dr_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(dr_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(dr_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
-ax.plot(dr_rewardall_greedy, "o-", label='Greedy', linewidth=0.75)
-ax.plot(dr_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+ax.plot(dr_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(dr_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
+ax.plot(dr_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(dr_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Sum Rate (b/s)")
 ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
-ax.set_yscale('log')
 ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
 ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
@@ -575,14 +582,14 @@ plt.show()
 
 # Plot for device selection frequency
 fig4, ax = plt.subplots()
-ax.plot(sd1_freq, "x-", label='SD1', linewidth=0.75 , color= 'darkblue')
-ax.plot(sd2_freq, "x-", label='SD2', linewidth=0.75, color='green')
+ax.plot(sd1_freq, "^-", label='SD1', linewidth=0.75 , color= 'red')
+ax.plot(sd2_freq, "v-", label='SD2', linewidth=0.75, color='yellow')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Device Selection Frequency")
 ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
-ax.set_ylim(0, MAX_EPISODES)
+ax.set_ylim(0, MAX_EP_STEPS)
 ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
 ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)

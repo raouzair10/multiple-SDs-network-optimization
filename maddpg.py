@@ -6,7 +6,7 @@ from buffer import ReplayBuffer
 
 device = T.device("cuda" if T.cuda.is_available() else "cpu")
 
-class Agent():
+class MADDPG():
     def __init__(self, alpha, beta, input_dims, tau, gamma=0.99, n_actions=2, max_size=1000000, batch_size=100, num_agents=1):
         self.gamma = gamma
         self.tau = tau
