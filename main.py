@@ -7,6 +7,8 @@ from env_sc import Env_cellular as env_sc
 from env_mrc import Env_cellular as env_mrc
 import matplotlib.pyplot as plt
 import matplotlib
+
+from masac import MASAC
 matplotlib.use('TkAgg')
 from maddpg import Agent as MADDPG
 from matd3 import MATD3
@@ -55,7 +57,7 @@ action_std_decay_freq = int(2.5e6)    # action_std decay frequency (in num times
 update_timestep_ppo = MAX_EP_STEPS * 3    # update policy every n timesteps
 K_epochs_ppo = 40                         # update policy for K epochs in one PPO update
 eps_clip_ppo = 0.2                        # clip parameter for PPO
-a_dim_ppo = 1 # Action dimension per agent (time-sharing fraction)
+a_dim_ppo = 2 # Action dimension per agent (time-sharing fraction)
 s_dim_ppo = 4 # Local state dimension for each SD [hn_PD_SD, hn_SD_BS, battery_level, hn_PD_BS]
 
 ##################### Hyperparameters for MATD3 #####################
@@ -120,7 +122,7 @@ elif diversity_mode == 2:   # MRC
     for i in range(num_PDs):
         for j in range(num_SDs):
             fading_PD_SD[i][j] = np.sum(hnx[i][j] ** 2) # sum of squares
-    myenv = env_mrc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, L, T, eta, Pn, Pmax, w_d, w_egc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    myenv = env_mrc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_d, w_mrc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 elif diversity_mode == 3:   # SC
     for i in range(num_PDs):
@@ -185,7 +187,34 @@ matd3_agent = MATD3(
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MAPPO POLICY-----------------------------------------------------------------
-mappo_agent = MAPPO(num_SDs, s_dim_ppo, a_dim_ppo, LR_A, LR_C, GAMMA, K_epochs_ppo, eps_clip_ppo, has_continuous_action_space, action_std)
+mappo_agent = MAPPO(
+    num_agents=num_SDs,
+    local_state_dim=s_dim_ppo,
+    global_state_dim=s_dim,
+    action_dim=a_dim_ppo,
+    lr_actor=0.0001,
+    lr_critic=0.0005,
+    gamma=0.99,
+    K_epochs=10,
+    eps_clip=0.2,
+    buffer_size=10000,
+    action_std_init=0.6
+)
+
+#-----------------------------------------------------------------------------------------------------------------------
+
+#---------------------------------Initialize MASAC Agent-----------------------------------------------------------------
+masac_agent = MASAC(
+    alpha=0.0003,  # example value, you can adjust
+    beta=0.0003,   # example value, you can adjust
+    input_dims=s_dim,
+    tau=0.005,     # example value
+    gamma=0.99,
+    n_actions=a_dim,
+    batch_size=100,
+    num_agents=2,
+    reward_scale=2
+)
 #-----------------------------------------------------------------------------------------------------------------------
 
 var = 1
@@ -194,18 +223,21 @@ total_time = 1
 ep_rewardall_ddpg = []
 ep_rewardall_matd3 = []
 ep_rewardall_mappo = []
+ep_rewardall_masac = []
 ep_rewardall_greedy = []
 ep_rewardall_random = []
 
 eh_rewardall_ddpg = []
 eh_rewardall_matd3 = []
 eh_rewardall_mappo = [] 
+eh_rewardall_masac = [] 
 eh_rewardall_greedy = []
 eh_rewardall_random = []
 
 ee_rewardall_ddpg = []
 ee_rewardall_matd3 = []
-ee_rewardall_mappo = [] 
+ee_rewardall_mappo = []
+ee_rewardall_masac = [] 
 ee_rewardall_greedy = []
 ee_rewardall_random = []
 
@@ -225,24 +257,28 @@ for i in range(MAX_EPISODES):
     s_ddpg = s
     s_matd3 = s
     s_mappo = s
+    s_masac = s
     s_greedy = s
     s_random = s
 
     ep_ee_ddpg = 0
     ep_ee_matd3 = 0
     ep_ee_mappo = 0
+    ep_ee_masac = 0
     ep_ee_random = 0
     ep_ee_greedy = 0
 
     ep_reward_ddpg = 0
     ep_reward_matd3 = 0
     ep_reward_mappo = 0
+    ep_reward_masac = 0
     ep_reward_random = 0
     ep_reward_greedy = 0
 
     eh_reward_ddpg = 0
     eh_reward_matd3 = 0
     eh_reward_mappo = 0
+    eh_reward_masac = 0
     eh_reward_random = 0
     eh_reward_greedy = 0
 
@@ -252,11 +288,11 @@ for i in range(MAX_EPISODES):
         a_ddpg = list(ddpg_agent.choose_action(s_local_ddpg, sd_ddpg))
         a_ddpg[1] = np.clip(np.random.normal(a_ddpg[1], var), 0, 1)[0]
 
-        r_ddpg, s_ddpg_, EHD, ee_ddpg = myenv.step(a_ddpg, s_ddpg / state_am, j+i)
+        r_ddpg, s_ddpg_, EHD_maddpg, ee_ddpg, dr_ddpg = myenv.step(a_ddpg, s_ddpg / state_am, j+i)
         s_ddpg_ = s_ddpg_ * state_am
         ddpg_agent.remember(s_ddpg[0], a_ddpg, r_ddpg, s_ddpg_[0])
         ep_reward_ddpg += r_ddpg
-        eh_reward_ddpg += EHD
+        eh_reward_ddpg += EHD_maddpg
         ep_ee_ddpg += ee_ddpg
 
         ######################## MATD3 ########################
@@ -264,7 +300,7 @@ for i in range(MAX_EPISODES):
         a_matd3 = list(matd3_agent.choose_action(s_local_matd3, sd_matd3))  # Choose action using MATD3 agent
         a_matd3[1] = np.clip(np.random.normal(a_matd3[1], var), 0, 1)[0]
 
-        r_matd3, s_matd3_, EHD_matd3, ee_matd3 = myenv.step(a_matd3, s_matd3 / state_am, j+i)
+        r_matd3, s_matd3_, EHD_matd3, ee_matd3, dr_matd3 = myenv.step(a_matd3, s_matd3 / state_am, j+i)
         s_matd3_ = s_matd3_ * state_am
         matd3_agent.remember(s_matd3[0], a_matd3, r_matd3, s_matd3_[0])  # Store experience in MATD3 buffer
         ep_reward_matd3 += r_matd3
@@ -272,40 +308,36 @@ for i in range(MAX_EPISODES):
         ep_ee_matd3 += ee_matd3
 
         ######################## MAPPO ########################
-        sd_mappo, s_local_mappo = choose_SD(s_mappo)   # <-- choosing agent
-        s_local_mappo_tensor = torch.FloatTensor(s_local_mappo).unsqueeze(0)  # shape [1, s_dim]
+        sd_mappo, _ = choose_SD(s_mappo)  # Choose which SD acts
+        global_state_tensor = torch.tensor(s_mappo, dtype=torch.float32).to(device)
+        action_mappo, logprob_mappo = mappo_agent.select_action(global_state_tensor, sd_mappo)
 
-        with torch.no_grad():
-            a, logprob_mappo = mappo_agent.select_action(s_local_mappo_tensor, sd_mappo)
-
-        a_mappo = [sd_mappo]
-        a_mappo.append(a[0])
-
-        # Clip the second action component
-        a_mappo[1] = np.clip(np.random.normal(a_mappo[1], var), 0, 1)[0]
-
-        # Interact with environment
-        r_mappo, s_mappo_, EHD_mappo, ee_mappo = myenv.step(a_mappo, s_mappo / state_am, j+i)
+        r_mappo, s_mappo_, EHD_mappo, ee_mappo, dr_mappo = myenv.step(action_mappo.tolist(), s_mappo / state_am, j + i)
         s_mappo_ = s_mappo_ * state_am
 
-        # Save experience into MAPPO buffer
-        mappo_agent.buffer.states[sd_mappo].append(s_local_mappo_tensor)
-        mappo_agent.buffer.actions[sd_mappo].append(torch.FloatTensor(a_mappo))
-        mappo_agent.buffer.logprobs[sd_mappo].append(logprob_mappo)
-        mappo_agent.buffer.rewards[sd_mappo].append(torch.tensor(r_mappo, dtype=torch.float32))
-        if i == MAX_EPISODES - 1:
-            mappo_agent.buffer.is_terminals[sd_mappo].append(True)  # Set to True only at episode end
-        else:
-            mappo_agent.buffer.is_terminals[sd_mappo].append(False)
-
+        mappo_agent.store_transition(s_mappo, action_mappo, logprob_mappo, r_mappo, (j == MAX_EP_STEPS - 1), sd_mappo)
 
         ep_reward_mappo += r_mappo
         eh_reward_mappo += EHD_mappo
         ep_ee_mappo += ee_mappo
 
+        ######################## MASAC ########################
+        sd_masac, s_local_masac = choose_SD(s_masac)
+        a_masac = list(masac_agent.choose_action(s_local_masac, sd_masac))
+        a_masac[1] = np.clip(np.random.normal(a_masac[1], var), 0, 1)[0]
+
+        r_masac, s_masac_, EHD_masac, ee_masac, dr_masac = myenv.step(a_masac, s_masac / state_am, j+i)
+        s_masac_ = s_masac_ * state_am
+
+        masac_agent.remember(s_masac[0], a_masac, r_masac, s_masac_[0])
+
+        ep_reward_masac += r_masac
+        eh_reward_masac += EHD_masac
+        ep_ee_masac += ee_masac
+
         ######################## Greedy ########################
         sd_greedy, _ = choose_SD(s_greedy)
-        r_greedy, s_next_greedy, EHG, ee_greedy = myenv.step_greedy(s_greedy / state_am, sd_greedy, j+i)
+        r_greedy, s_next_greedy, EHG, ee_greedy, dr_greedy = myenv.step_greedy(s_greedy / state_am, sd_greedy, j+i)
         s_greedy = s_next_greedy * state_am
         ep_reward_greedy += r_greedy
         eh_reward_greedy += EHG
@@ -313,7 +345,7 @@ for i in range(MAX_EPISODES):
 
         ######################## Random ########################
         sd_random, _ = choose_SD(s_random)
-        r_random, s_next_random, EHR, ee_random = myenv.step_random(s_random / state_am,sd_random, j+i)
+        r_random, s_next_random, EHR, ee_random, dr_random = myenv.step_random(s_random / state_am,sd_random, j+i)
         s_random = s_next_random * state_am
         ep_reward_random += r_random
         eh_reward_random += EHR
@@ -323,20 +355,23 @@ for i in range(MAX_EPISODES):
             var *= .9998
         ddpg_agent.learn()
         matd3_agent.learn()
+        masac_agent.learn()
         if total_time % update_timestep_ppo == 0:
-            mappo_agent.update()
+            mappo_agent.learn()
         s_ddpg = s_ddpg_
         s_matd3 = s_matd3_
         s_mappo = s_mappo_
+        s_masac = s_masac_
         total_time += 1
 
         if j == MAX_EP_STEPS - 1:
             print('Avg EE for Episode:', i,
-                  ' DDPG: %i' % int(ep_ee_ddpg / MAX_EP_STEPS),
-                  'MATD3: %i' % int(ep_ee_matd3 / MAX_EP_STEPS),
-                  'MAPPO: %i' % int(ep_ee_mappo / MAX_EP_STEPS),
-                  'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
-                  'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
+                ' DDPG: %i' % int(ep_ee_ddpg / MAX_EP_STEPS),
+                'MATD3: %i' % int(ep_ee_matd3 / MAX_EP_STEPS),
+                'MAPPO: %i' % int(ep_ee_mappo / MAX_EP_STEPS),
+                'MASAC: %i' % int(ep_ee_masac / MAX_EP_STEPS),
+                'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
+                'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
                   
             
     ep_reward_ddpg = np.reshape(ep_reward_ddpg / MAX_EP_STEPS, (1,))

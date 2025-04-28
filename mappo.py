@@ -1,203 +1,193 @@
 import torch
 import torch.nn as nn
-from torch.distributions import MultivariateNormal, Categorical
+import torch.nn.functional as F
+from torch.distributions import MultivariateNormal
+import numpy as np
 
-'''Multi-Agent Proximal Policy Optimization Algorithm'''
-
-# set device
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f"Device set to: {device}")
 
 ################################## Rollout Buffer ##################################
 class RolloutBuffer:
-    def __init__(self, num_agents):
+    def __init__(self, num_agents, local_state_dim, global_state_dim, action_dim, buffer_size):
         self.num_agents = num_agents
-        self.actions = [[] for _ in range(num_agents)]
-        self.states = [[] for _ in range(num_agents)]
-        self.logprobs = [[] for _ in range(num_agents)]
-        self.rewards = [[] for _ in range(num_agents)]
-        self.is_terminals = [[] for _ in range(num_agents)]
+        self.local_state_dim = local_state_dim
+        self.global_state_dim = global_state_dim
+        self.action_dim = action_dim  # [sd_index, time_sharing_value]
+        self.buffer_size = buffer_size
+        self.ptr = 0
+        self.path_slice = slice(0, buffer_size)
 
-    def clear(self):
-        for i in range(self.num_agents):
-            self.actions[i].clear()
-            self.states[i].clear()
-            self.logprobs[i].clear()
-            self.rewards[i].clear()
-            self.is_terminals[i].clear()
+        self.global_states = np.zeros([buffer_size, global_state_dim], dtype=np.float32)
+        self.actions = np.zeros([buffer_size, action_dim], dtype=np.float32)
+        self.logprobs = np.zeros([buffer_size], dtype=np.float32)
+        self.rewards = np.zeros([buffer_size], dtype=np.float32)
+        self.is_terminals = np.zeros([buffer_size], dtype=np.bool_)
+        self.agent_indices = np.zeros([buffer_size], dtype=np.int32) # To track which agent acted
 
-################################## Actor Network ##################################
-class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim, has_continuous_action_space, action_std_init):
-        super(Actor, self).__init__()
+    def store(self, global_state, action, logprob, reward, is_terminal, agent_index):
+        self.global_states[self.ptr] = global_state
+        self.actions[self.ptr] = action
+        self.logprobs[self.ptr] = logprob
+        self.rewards[self.ptr] = reward
+        self.is_terminals[self.ptr] = is_terminal
+        self.agent_indices[self.ptr] = agent_index
+        self.ptr = (self.ptr + 1) % self.buffer_size
 
-        self.has_continuous_action_space = has_continuous_action_space
-
-        if self.has_continuous_action_space:
-            self.action_dim = action_dim
-            self.action_var = torch.full((action_dim,), action_std_init * action_std_init).to(device)
-
-            self.actor = nn.Sequential(
-                nn.Linear(state_dim, 64),
-                nn.ReLU(),
-                nn.Linear(64, 64),
-                nn.ReLU(),
-                nn.Linear(64, action_dim),
-                nn.Tanh()
-            )
-        else:
-            self.actor = nn.Sequential(
-                nn.Linear(state_dim, 64),
-                nn.Tanh(),
-                nn.Linear(64, 64),
-                nn.Tanh(),
-                nn.Linear(64, action_dim),
-                nn.Softmax(dim=-1)
-            )
-
-    def set_action_std(self, new_action_std):
-        if self.has_continuous_action_space:
-            self.action_var = torch.full((self.action_dim,), new_action_std * new_action_std).to(device)
-
-    def act(self, state):
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            cov_mat = torch.diag(self.action_var).unsqueeze(dim=0)
-            dist = MultivariateNormal(action_mean, cov_mat)
-        else:
-            action_probs = self.actor(state)
-            dist = Categorical(action_probs)
-
-        action = dist.sample()
-        action_logprob = dist.log_prob(action)
-
-        return action.detach(), action_logprob.detach()
-
-    def evaluate(self, state, action):
-        if self.has_continuous_action_space:
-            action_mean = self.actor(state)
-            action_var = self.action_var.expand_as(action_mean)
-            cov_mat = torch.diag_embed(action_var)
-            dist = MultivariateNormal(action_mean, cov_mat)
-
-            action_logprobs = dist.log_prob(action)
-            dist_entropy = dist.entropy()
-        else:
-            action_probs = self.actor(state)
-            dist = Categorical(action_probs)
-
-            action_logprobs = dist.log_prob(action)
-            dist_entropy = dist.entropy()
-
-        return action_logprobs, dist_entropy
-
-################################## Centralized Critic Network ##################################
-class CentralizedCritic(nn.Module):
-    def __init__(self, state_dim, action_dim, num_agents):
-        super(CentralizedCritic, self).__init__()
-
-        self.critic = nn.Sequential(
-            nn.Linear(num_agents * (state_dim + action_dim), 128),
-            nn.ReLU(),
-            nn.Linear(128, 128),
-            nn.ReLU(),
-            nn.Linear(128, 1)
+    def sample(self, batch_size):
+        indices = np.random.choice(self.buffer_size, size=batch_size, replace=False)
+        return (
+            self.global_states[indices],
+            self.actions[indices],
+            self.logprobs[indices],
+            self.rewards[indices],
+            self.is_terminals[indices],
+            self.agent_indices[indices]
         )
 
-    def forward(self, states, actions):
-        x = torch.cat([states, actions], dim=-1)
-        return self.critic(x)
+    def clear(self):
+        self.ptr = 0
+        self.global_states[:] = 0
+        self.actions[:] = 0
+        self.logprobs[:] = 0
+        self.rewards[:] = 0
+        self.is_terminals[:] = False
+        self.agent_indices[:] = 0
 
-################################## MAPPO ##################################
+################################## Actor Network ##################################
+class SimpleActor(nn.Module):
+    def __init__(self, s_dim):
+        super(SimpleActor, self).__init__()
+        self.l1 = nn.Linear(s_dim, 64)
+        self.l2 = nn.Linear(64, 64)
+        self.a = nn.Linear(64, 1)
+
+    def forward(self, s):
+        x = F.relu(self.l1(s))
+        x = F.relu(self.l2(x))
+        a = torch.tanh(self.a(x))
+        return a
+
+################################## Centralized Critic Network ##################################
+class SimpleCritic(nn.Module):
+    def __init__(self, s_dim, a_dim):
+        super(SimpleCritic, self).__init__()
+        self.l1 = nn.Linear(s_dim + a_dim, 64)
+        self.l2 = nn.Linear(64, 64)
+        self.q = nn.Linear(64, 1)
+
+    def forward(self, s, a):
+        x = torch.cat([s, a], dim=-1)
+        x = F.relu(self.l1(x))
+        x = F.relu(self.l2(x))
+        return self.q(x)
+
+################################## MAPPO Agent ##################################
 class MAPPO:
-    def __init__(self, num_agents, state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, has_continuous_action_space, action_std_init=0.6):
+    def __init__(self, num_agents, local_state_dim, global_state_dim, action_dim, lr_actor, lr_critic, gamma, K_epochs, eps_clip, buffer_size, action_std_init=0.6):
         self.num_agents = num_agents
         self.gamma = gamma
         self.eps_clip = eps_clip
         self.K_epochs = K_epochs
-        self.update_timestep = 1200
-        self.has_continuous_action_space = has_continuous_action_space
+        self.buffer_size = buffer_size
+        self.local_state_dim = local_state_dim
+        self.global_state_dim = global_state_dim
+        self.action_dim = action_dim # [sd_index, time_sharing_value]
+        self.action_std_init = action_std_init
 
-        self.buffer = RolloutBuffer(num_agents)
+        self.buffer = RolloutBuffer(num_agents, local_state_dim, global_state_dim, action_dim, buffer_size)
 
-        self.actors = [Actor(state_dim, action_dim, has_continuous_action_space, action_std_init).to(device) for _ in range(num_agents)]
-        self.optimizers = [torch.optim.Adam(actor.parameters(), lr=lr_actor) for actor in self.actors]
+        self.actors = [SimpleActor(local_state_dim).to(device) for _ in range(num_agents)]
+        self.actor_optimizers = [torch.optim.Adam(actor.parameters(), lr=lr_actor) for actor in self.actors]
 
-        self.critic = CentralizedCritic(state_dim, action_dim, num_agents).to(device)
+        self.critic = SimpleCritic(global_state_dim, action_dim).to(device)
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=lr_critic)
 
         self.MseLoss = nn.MSELoss()
 
-    def set_action_std(self, new_action_std):
-        if self.has_continuous_action_space:
-            for actor in self.actors:
-                actor.set_action_std(new_action_std)
+    def get_local_state(self, global_state, agent_index):
+        start_index = agent_index * 3  # Each SD has 3 local state features
+        end_index = start_index + 3
+        local_state_part = global_state[0, start_index:end_index]
+        shared_feature = global_state[0, -1] # The last element is hn-PDi-BS
+        local_state = torch.cat([local_state_part, shared_feature.unsqueeze(0)], dim=-1)
+        return local_state
 
-    def select_action(self, state, agent_id):
-        state = torch.FloatTensor(state).to(device)
-        action, action_logprob = self.actors[agent_id].act(state)
+    def select_action(self, global_state, agent_index):
+        local_state = self.get_local_state(global_state, agent_index)
+        actor = self.actors[agent_index]
+        action_ts_mean = actor(local_state.unsqueeze(0))
+        action_var = torch.full_like(action_ts_mean, self.action_std_init ** 2).to(device)
+        dist = MultivariateNormal(action_ts_mean, torch.diag_embed(action_var))
+        action_ts = dist.sample()
+        action_logprob = dist.log_prob(action_ts).squeeze()
+        action = torch.zeros(self.action_dim).to(device)
+        action[0] = agent_index # Store the active SD index
+        action[1:] = action_ts.cpu() * 0.5 + 0.5 # Scale [-1, 1] to [0, 1]
+        return action.cpu().numpy(), action_logprob.detach().numpy()
 
-        self.buffer.states[agent_id].append(state)
-        self.buffer.actions[agent_id].append(action)
-        self.buffer.logprobs[agent_id].append(action_logprob)
+    def store_transition(self, global_state, action, logprob, reward, is_terminal, agent_index):
+        self.buffer.store(global_state, action, logprob, reward, is_terminal, agent_index)
 
-        return action.cpu().numpy(), action_logprob if self.has_continuous_action_space else action.item()
+    def learn(self):
+        if self.buffer.ptr < self.buffer_size: # Only learn when buffer is full
+            return
 
-    def update(self):
-        rewards = [[] for _ in range(self.num_agents)]
-        discounted_reward = [0 for _ in range(self.num_agents)]
+        batch = self.buffer.sample(self.buffer_size)
+        global_states, actions, logprobs, rewards, is_terminals, agent_indices = batch
 
-        for agent_id in range(self.num_agents):
-            for reward, is_terminal in zip(reversed(self.buffer.rewards[agent_id]), reversed(self.buffer.is_terminals[agent_id])):
-                if is_terminal:
-                    discounted_reward[agent_id] = 0
-                discounted_reward[agent_id] = reward + (self.gamma * discounted_reward[agent_id])
-                rewards[agent_id].insert(0, discounted_reward[agent_id])
+        global_states = torch.tensor(global_states, dtype=torch.float32).to(device)
+        actions = torch.tensor(actions, dtype=torch.float32).to(device)
+        logprobs = torch.tensor(logprobs, dtype=torch.float32).to(device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(device)
+        is_terminals = torch.tensor(is_terminals, dtype=torch.bool).to(device)
+        agent_indices = torch.tensor(agent_indices, dtype=torch.long).to(device)
 
-        # Normalize rewards
-        normalized_rewards = []
-        for rew in rewards:
-            rew = torch.tensor(rew, dtype=torch.float32).to(device)
-            normalized_rewards.append((rew - rew.mean()) / (rew.std() + 1e-7))
-
-        # Convert buffer data to tensors
-        old_states = [torch.stack(self.buffer.states[i]).detach() for i in range(self.num_agents)]
-        old_actions = [torch.stack(self.buffer.actions[i]).detach() for i in range(self.num_agents)]
-        old_logprobs = [torch.stack(self.buffer.logprobs[i]).detach() for i in range(self.num_agents)]
-
-        # Joint State and Actions
-        joint_states = torch.cat(old_states, dim=-1)
-        joint_actions = torch.cat(old_actions, dim=-1)
-
-        state_values = self.critic(joint_states, joint_actions).squeeze()
-
-        advantages = []
-        for i in range(self.num_agents):
-            advantages.append(normalized_rewards[i] - state_values.detach())
-
-        # Optimize policy and critic
-        for agent_id in range(self.num_agents):
-            for _ in range(self.K_epochs):
-                logprobs, dist_entropy = self.actors[agent_id].evaluate(old_states[agent_id], old_actions[agent_id])
-
-                ratios = torch.exp(logprobs - old_logprobs[agent_id])
-
-                surr1 = ratios * advantages[agent_id]
-                surr2 = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages[agent_id]
-
-                loss = -torch.min(surr1, surr2) + 0.5 * self.MseLoss(state_values, normalized_rewards[agent_id]) - 0.01 * dist_entropy
-
-                self.optimizers[agent_id].zero_grad()
-                loss.mean().backward()
-                self.optimizers[agent_id].step()
-
-        # Update centralized critic
-        critic_loss = self.MseLoss(state_values, torch.mean(torch.stack(normalized_rewards), dim=0))
+        # Optimize critic
         self.critic_optimizer.zero_grad()
+        critic_value = self.critic(global_states, actions).squeeze(1)
+        returns = np.zeros_like(rewards)
+        for t in reversed(range(self.buffer_size)):
+            discounted_reward = 0
+            if not is_terminals[t]:
+                discounted_reward = rewards[t] + self.gamma * discounted_reward
+            else:
+                discounted_reward = rewards[t]
+            returns[t] = discounted_reward
+        returns = torch.tensor(returns, dtype=torch.float32).to(device)
+        critic_loss = self.MseLoss(critic_value, returns)
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # clear buffer
+        # Optimize actors
+        for agent_id in range(self.num_agents):
+            actor_optimizer = self.actor_optimizers[agent_id]
+            actor_optimizer.zero_grad()
+
+            agent_mask = (agent_indices == agent_id).nonzero(as_tuple=True)[0]
+            if len(agent_mask) > 0:
+                batch_indices = agent_mask
+                local_states_agent = torch.stack([self.get_local_state(global_states[i], agent_id) for i in batch_indices])
+                old_logprobs_agent = logprobs[batch_indices]
+                actions_agent = actions[batch_indices]
+
+                actor = self.actors[agent_id]
+                action_mean = actor(local_states_agent)
+                action_var = torch.full_like(action_mean, self.action_std_init ** 2).to(device)
+                dist = MultivariateNormal(action_mean, torch.diag_embed(action_var))
+                new_logprobs_agent = dist.log_prob(actions_agent[:, 1:].unsqueeze(1)).squeeze()
+                entropy = dist.entropy().mean()
+                ratio = torch.exp(new_logprobs_agent - old_logprobs_agent.detach())
+
+                values = self.critic(global_states[batch_indices], actions[batch_indices]).squeeze(1).detach()
+                advantages = returns[batch_indices] - values
+
+                surr1 = ratio * advantages
+                surr2 = torch.clamp(ratio, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+                actor_loss = (-torch.min(surr1, surr2).mean() - 0.01 * entropy)
+                actor_loss.backward()
+                actor_optimizer.step()
+
         self.buffer.clear()
 
     def save(self, checkpoint_path_prefix):
