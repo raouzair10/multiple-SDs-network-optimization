@@ -75,7 +75,7 @@ np.random.seed(seed)
 
 ##################### Network Nodes Deployment #####################
 location_PDs = np.array([[0, 1],[0,1000]])
-location_SDs = np.array([[2,2],[1,1]])
+location_SDs = np.array([[1,1],[1,1000]])
 
 # location_PDs = np.random.uniform(low=0, high=1000, size=(num_PDs, 2)).astype(int)
 # # [[548 715]
@@ -402,13 +402,15 @@ for i in range(MAX_EPISODES):
                 'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
                 'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
             
-            # print('Average SR for Episode:', i,
-            #     'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
-            #     'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
-            #     'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
-            #     'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
-            #     'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
-            #     'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
+            print('Average SR for Episode:', i,
+                'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
+                'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
+                'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
+                'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
+                'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
+                'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
+            
+            print()
             
     ep_reward_ddpg = np.reshape(ep_reward_ddpg / MAX_EP_STEPS, (1,))
     ep_rewardall_ddpg.append(ep_reward_ddpg)
@@ -447,8 +449,6 @@ for i in range(MAX_EPISODES):
     dr_rewardall_mappo.append(ep_dr_mappo)
     sd1_freq.append(sd1_count)
     sd2_freq.append(sd2_count)
-    print(sd1_freq)
-    print(sd2_freq)
     
     ep_reward_greedy = np.reshape(ep_reward_greedy/MAX_EP_STEPS, (1,))
     ep_rewardall_greedy.append(ep_reward_greedy)
