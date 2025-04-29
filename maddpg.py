@@ -36,7 +36,7 @@ class MADDPG():
         s = T.FloatTensor(s.reshape(1, -1)).to(device)
         a = self.actors[agent_index](s)
         self.actors[agent_index].train()
-        return agent_index, a.cpu().data.numpy().flatten()
+        return a.cpu().data.numpy().flatten()
 
     def remember(self, state, action, reward, state_):
         self.memory.store_transition(state, action, reward, state_)

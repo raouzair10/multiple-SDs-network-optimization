@@ -28,13 +28,13 @@ T = 1
 eta = 0.7
 Pn = 1
 Pmax = 0.2
-w_csk = 0.000003
+w_csk = 0.000001
 w_d = 1.5 * (10 ** -5)
 w_egc = 1 * (10 ** -6)
 w_mrc = 2 * (10 ** -6)
 
 ##################### Hyper Parameters #####################
-MAX_EPISODES = 200
+MAX_EPISODES = 300
 MAX_EP_STEPS = 300
 LR_A = 0.0002
 LR_C = 0.0004
@@ -46,27 +46,6 @@ s_dim = (3 * num_SDs) + 1 # Calculate state dimension
 a_dim = 2 # Calculate action dimension
 a_bound = 1
 state_am = 1000
-
-##################### Hyperparameters for PPO #####################
-has_continuous_action_space = True  # continuous action space; else discrete
-action_std = 0.6                      # starting std for action distribution (Multivariate Normal)
-action_std_decay_rate = 0.05          # linearly decay action_std
-min_action_std = 0.1                  # minimum action_std
-action_std_decay_freq = int(2.5e6)    # action_std decay frequency (in num timesteps)
-update_timestep_ppo = MAX_EP_STEPS * 3    # update policy every n timesteps
-K_epochs_ppo = 40                         # update policy for K epochs in one PPO update
-eps_clip_ppo = 0.2                        # clip parameter for PPO
-a_dim_ppo = num_SDs # Action dimension per agent (time-sharing fraction)
-s_dim_ppo = 4 # Local state dimension for each SD [hn_PD_SD, hn_SD_BS, battery_level, hn_PD_BS]
-
-##################### Hyperparameters for MATD3 #####################
-LR_A_MATD3 = 0.0002
-LR_C_MATD3 = 0.0004
-GAMMA_MATD3 = 0.9
-TAU_MATD3 = 0.01
-MEMORY_CAPACITY_MATD3 = 10000
-BATCH_SIZE_MATD3 = 32
-UPDATE_ACTOR_INTERVAL_MATD3 = 2
 
 ##################### Set random seed number #####################
 seed = 0
@@ -173,48 +152,33 @@ ddpg_agent = MADDPG(LR_A, LR_C, s_dim, TAU, GAMMA, n_actions=a_dim, max_size=MEM
 
 #---------------------------------Initialize MATD3 Agent-----------------------------------------------------------------
 matd3_agent = MATD3(
-    alpha=LR_A_MATD3,                # Learning rate for the actor
-    beta=LR_C_MATD3,                 # Learning rate for the critic
+    alpha=LR_A,                # Learning rate for the actor
+    beta=LR_C,                 # Learning rate for the critic
     input_dims=s_dim,                # The state dimension (s_dim)
-    tau=TAU_MATD3,                   # Target network update parameter
-    gamma=GAMMA_MATD3,               # Discount factor
+    tau=TAU,                   # Target network update parameter
+    gamma=GAMMA,               # Discount factor
     n_actions=a_dim,                 # Number of actions
-    max_size=MEMORY_CAPACITY_MATD3,  # Size of the experience replay buffer
-    batch_size=BATCH_SIZE_MATD3,     # Batch size for learning
+    max_size=MEMORY_CAPACITY,  # Size of the experience replay buffer
+    batch_size=BATCH_SIZE,     # Batch size for learning
     num_agents=num_SDs               # Total number of agents
 )
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MAPPO POLICY-----------------------------------------------------------------
-mappo_agent = MAPPO(
-    num_agents=num_SDs,
-    local_state_dim=s_dim_ppo,
-    global_state_dim=s_dim,
-    action_dim=a_dim_ppo,
-    lr_actor=LR_A,
-    lr_critic=LR_C,
-    gamma=GAMMA,
-    K_epochs=40,
-    eps_clip=0.2,
-    buffer_size=10000,
-    action_std_init=0.6,
-    action_std_decay_rate=0.05,  # You can adjust this value
-    min_action_std=0.1             # You can adjust this value
-)
-
+mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=s_dim//num_SDs+1, global_state_dim=s_dim, action_dim_per_agent=1, lr_actor=LR_A, lr_critic=LR_C, gamma=GAMMA, K_epochs=4, eps_clip=0.2, buffer_size=1000, has_continuous_action_space=True, action_std_init=0.6)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MASAC Agent-----------------------------------------------------------------
 masac_agent = MASAC(
-    alpha=0.0003,  # example value, you can adjust
-    beta=0.0003,   # example value, you can adjust
-    input_dims=s_dim,
-    tau=0.005,     # example value
-    gamma=0.99,
+    lr_a=LR_A,  # example value, you can adjust
+    lr_c=LR_C,   # example value, you can adjust
+    global_input_dims=s_dim,
+    tau=TAU,     # example value
+    gamma=GAMMA,
     n_actions=a_dim,
-    batch_size=100,
-    num_agents=2,
-    reward_scale=2
+    max_size=MEMORY_CAPACITY,
+    batch_size=BATCH_SIZE,
+    num_agents=num_SDs
 )
 #-----------------------------------------------------------------------------------------------------------------------
 
@@ -306,12 +270,15 @@ for i in range(MAX_EPISODES):
     for j in range(MAX_EP_STEPS):
         ######################## MADDPG ########################
         sd_ddpg, s_local_ddpg = choose_SD(s_ddpg)
-        a_ddpg = list(ddpg_agent.choose_action(s_local_ddpg, sd_ddpg))
-        a_ddpg[1] = np.clip(np.random.normal(a_ddpg[1], var), 0, 1)[0]
+        a_ddpg = ddpg_agent.choose_action(s_local_ddpg, sd_ddpg)
+        a_ddpg = np.clip(np.random.normal(a_ddpg, var), 0, 1)[0]
 
-        r_ddpg, s_ddpg_, EHD_maddpg, ee_ddpg, dr_ddpg = myenv.step(a_ddpg, s_ddpg / state_am, j+i)
+        action_ddpg = np.zeros(2, dtype=np.float32)
+        action_ddpg[sd_ddpg] = a_ddpg
+
+        r_ddpg, s_ddpg_, EHD_maddpg, ee_ddpg, dr_ddpg = myenv.step(sd_ddpg, a_ddpg, s_ddpg / state_am, j+i)
         s_ddpg_ = s_ddpg_ * state_am
-        ddpg_agent.remember(s_ddpg[0], a_ddpg, r_ddpg, s_ddpg_[0])
+        ddpg_agent.remember(s_ddpg[0], action_ddpg, r_ddpg, s_ddpg_[0])
         ep_reward_ddpg += r_ddpg
         eh_reward_ddpg += EHD_maddpg
         ep_ee_ddpg += ee_ddpg
@@ -319,45 +286,59 @@ for i in range(MAX_EPISODES):
 
         ######################## MATD3 ########################
         sd_matd3, s_local_matd3 = choose_SD(s_matd3)
-        a_matd3 = list(matd3_agent.choose_action(s_local_matd3, sd_matd3))  # Choose action using MATD3 agent
-        a_matd3[1] = np.clip(np.random.normal(a_matd3[1], var), 0, 1)[0]
+        if sd_matd3 == 0:
+            sd1_count += 1
+        else:
+            sd2_count += 1 
+        a_matd3 = matd3_agent.choose_action(s_local_matd3, sd_matd3)  # Choose action using MATD3 agent
+        a_matd3 = np.clip(np.random.normal(a_matd3, var), 0, 1)[0]
 
-        r_matd3, s_matd3_, EHD_matd3, ee_matd3, dr_matd3 = myenv.step(a_matd3, s_matd3 / state_am, j+i)
+        action_matd3 = np.zeros(2, dtype=np.float32)
+        action_matd3[sd_matd3] = a_matd3
+
+        r_matd3, s_matd3_, EHD_matd3, ee_matd3, dr_matd3 = myenv.step(sd_matd3, a_matd3, s_matd3 / state_am, j+i)
         s_matd3_ = s_matd3_ * state_am
-        matd3_agent.remember(s_matd3[0], a_matd3, r_matd3, s_matd3_[0])  # Store experience in MATD3 buffer
+        matd3_agent.remember(s_matd3[0], action_matd3, r_matd3, s_matd3_[0])  # Store experience in MATD3 buffer
         ep_reward_matd3 += r_matd3
         eh_reward_matd3 += EHD_matd3
         ep_ee_matd3 += ee_matd3
         ep_dr_matd3 += dr_matd3
 
         ######################## MAPPO ########################
-        sd_mappo, _ = choose_SD(s_mappo)  # Choose which SD acts
-        if sd_mappo == 0:
-            sd1_count += 1
-        else:
-            sd2_count += 1 
-        global_state_tensor = torch.tensor(s_mappo, dtype=torch.float32).to(device)
-        action_mappo, logprob_mappo = mappo_agent.select_action(global_state_tensor, sd_mappo)
+        sd_mappo, s_local_mappo = choose_SD(s_mappo)
 
-        r_mappo, s_mappo_, EHD_mappo, ee_mappo, dr_mappo = myenv.step(action_mappo.tolist(), s_mappo / state_am, j + i)
+        # Get action (tsv) from the active agent's actor
+        a_mappo, logprob = mappo_agent.select_action(s_local_mappo, sd_mappo)
+        a_mappo = np.clip(np.random.normal(a_mappo, var), 0, 1)[0]
+
+        # Create the 2D action vector [tsv1, tsv2]
+        action_mappo = np.zeros(2, dtype=np.float32)
+        action_mappo[sd_mappo] = a_mappo
+
+        r_mappo, s_mappo_, EHD_mappo, ee_mappo, dr_mappo = myenv.step(sd_mappo, a_mappo, s_mappo / state_am, j+i)
         s_mappo_ = s_mappo_ * state_am
 
-        mappo_agent.store_transition(s_mappo, action_mappo, logprob_mappo, r_mappo, (j == MAX_EP_STEPS - 1), sd_mappo)
+        # Store the transition
+        mappo_agent.store_transition(s_mappo, action_mappo, logprob, r_mappo, (j == MAX_EP_STEPS-1), sd_mappo) # Assuming episode doesn't end here
 
         ep_reward_mappo += r_mappo
         eh_reward_mappo += EHD_mappo
         ep_ee_mappo += ee_mappo
         ep_dr_mappo += dr_mappo
+        s_mappo = s_mappo_
 
         ######################## MASAC ########################
         sd_masac, s_local_masac = choose_SD(s_masac)
-        a_masac = list(masac_agent.choose_action(s_local_masac, sd_masac))
-        a_masac[1] = np.clip(np.random.normal(a_masac[1], var), 0, 1)[0]
+        a_masac = masac_agent.choose_action(s_local_masac, sd_masac)
+        a_masac = np.clip(np.random.normal(a_masac, var), 0, 1)[0]
 
-        r_masac, s_masac_, EHD_masac, ee_masac, dr_masac = myenv.step(a_masac, s_masac / state_am, j+i)
+        action_masac = np.zeros(2, dtype=np.float32)
+        action_masac[sd_masac] = a_masac
+
+        r_masac, s_masac_, EHD_masac, ee_masac, dr_masac = myenv.step(sd_masac, a_masac, s_masac / state_am, j+i)
         s_masac_ = s_masac_ * state_am
 
-        masac_agent.remember(s_masac[0], a_masac, r_masac, s_masac_[0])
+        masac_agent.remember(s_masac[0], action_masac, r_masac, s_masac_[0])
 
         ep_reward_masac += r_masac
         eh_reward_masac += EHD_masac
@@ -387,8 +368,9 @@ for i in range(MAX_EPISODES):
         ddpg_agent.learn()
         matd3_agent.learn()
         masac_agent.learn()
-        if total_time % update_timestep_ppo == 0:
-            mappo_agent.learn()
+        if mappo_agent.buffer.ptr == mappo_agent.buffer_size:
+            mappo_agent.update()
+            mappo_agent.buffer.clear()
         s_ddpg = s_ddpg_
         s_matd3 = s_matd3_
         s_mappo = s_mappo_
@@ -476,13 +458,12 @@ for i in range(MAX_EPISODES):
 fig1, ax = plt.subplots()
 ax.plot(eh_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(eh_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(eh_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(eh_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='skyblue')
 ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
 ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
 ax.plot(eh_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Energy Harvested (J)")
-ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
 ax.set_yscale('log')
@@ -491,7 +472,7 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 
 # Make the legend draggable
-legend1 = ax.legend()
+legend1 = ax.legend(facecolor='none')
 legend1.set_draggable(True)
 
 fig1.savefig('EH.eps', format='eps', bbox_inches='tight')
@@ -503,51 +484,19 @@ plt.show()
 fig2, ax = plt.subplots()
 ax.plot(ee_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(ee_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(ee_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(ee_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='skyblue')
 ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
 ax.plot(ee_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color= 'orange')
 ax.plot(ee_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Energy Efficiency (b/J)")
-ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
 ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
 ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 
-# # Add a zoomed-in inset plot for Greedy and Random comparison
-# axins = inset_axes(ax, width="18%", height="13%", loc=4, borderpad=4)  # Adjust size and location
-# axins.plot(ee_rewardall_greedy, "o-", label='Greedy', color='orange', linewidth=0.75)
-# axins.plot(ee_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
-
-# # Set limits for the zoomed-in section that matches the data in the main plot
-# x1, x2 = 165, 175 # Adjust based on your data range for episodes
-# y1, y2 = 40, 60  # Adjust to fit the energy efficiency range
-# axins.set_xlim(x1, x2)
-# axins.set_ylim(y1, y2)
-
-# # Add grid and adjust ticks for the inset
-# axins.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-# axins.set_xticks([165, 170, 175])  # Adjust to your actual data range
-# axins.set_yticks([45, 50, 55])    # Adjust y-axis ticks based on zoomed data
-
-# # Highlight the zoomed region on the main plot with a rectangle
-# rect = Rectangle((x1, -5000), x2-x1, 10000, linewidth=1, edgecolor='black', facecolor='none', linestyle='--')
-# ax.add_patch(rect)
-
-# con = ConnectionPatch(xyA=((x1 + x2) / 2, (y1 + y2) / 2 + 5000 ), coordsA=ax.transData,
-#                       xyB=(x1 + 4, y1), coordsB=axins.transData,
-#                       arrowstyle='->', color='black', lw=1)
-
-# axins.add_artist(con)
-
-
-# # Move the legend to the bottom left
-# legend3 = ax.legend(loc='lower left', bbox_to_anchor=(0.1, 0.1), edgecolor="black")
-# legend3.get_frame().set_alpha(None)
-# legend3.get_frame().set_facecolor((1, 1, 1, 0))
-legend2 = ax.legend()
+legend2 = ax.legend(facecolor='none')
 legend2.set_draggable(True)
 
 # Save figures with different formats
@@ -560,13 +509,12 @@ plt.show()
 fig3, ax = plt.subplots()
 ax.plot(dr_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(dr_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(dr_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(dr_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='skyblue')
 ax.plot(dr_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
 ax.plot(dr_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
 ax.plot(dr_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Sum Rate (b/s)")
-ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
 ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
@@ -574,7 +522,7 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 
 # Make the legend draggable
-legend3 = ax.legend()
+legend3 = ax.legend(facecolor='none')
 legend3.set_draggable(True)
 
 fig3.savefig('SR.eps', format='eps', bbox_inches='tight')
@@ -585,10 +533,9 @@ plt.show()
 # Plot for device selection frequency
 fig4, ax = plt.subplots()
 ax.plot(sd1_freq, "^-", label='SD1', linewidth=0.75 , color= 'red')
-ax.plot(sd2_freq, "v-", label='SD2', linewidth=0.75, color='yellow')
+ax.plot(sd2_freq, "v-", label='SD2', linewidth=0.75, color='darkblue')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Device Selection Frequency")
-ax.legend()
 ax.margins(x=0)
 ax.set_xlim(0, MAX_EPISODES)
 ax.set_ylim(0, MAX_EP_STEPS)
@@ -597,7 +544,7 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 
 # Make the legend draggable
-legend4 = ax.legend()
+legend4 = ax.legend(facecolor='none')
 legend4.set_draggable(True)
 
 fig4.savefig('DSF.eps', format='eps', bbox_inches='tight')
