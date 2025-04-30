@@ -9,14 +9,14 @@ class Actor(nn.Module):
     def __init__(self, s_dim, n_actions, fc1_dim=64, fc2_dim=64):
         super(Actor, self).__init__()
         self.fc1 = nn.Linear(s_dim, fc1_dim)
-        self.bn1 = nn.BatchNorm1d(fc1_dim) # Add batch normalization
+        self.bn1 = nn.BatchNorm1d(fc1_dim)
         self.fc2 = nn.Linear(fc1_dim, fc2_dim)
         self.mean = nn.Linear(fc2_dim, n_actions)
         self.log_std = nn.Linear(fc2_dim, n_actions)
 
     def forward(self, state):
         x = self.fc1(state)
-        x = self.bn1(x) # Apply batch normalization
+        x = self.bn1(x)
         x = F.relu(x)
         x = self.fc2(x)
         x = F.relu(x)
@@ -75,11 +75,10 @@ class MASAC:
         self.lr_a = lr_a
         self.lr_c = lr_c
         self.num_agents = num_agents
-        self.n_actions = n_actions  # Dimension of the joint action vector
+        self.n_actions = n_actions
 
         self.memory = ReplayBuffer(max_size, global_input_dims, n_actions)
 
-        # Centralized critics (2 Q-networks + targets) - Input is global state + joint action
         critic_input_dims = global_input_dims + n_actions
         self.critic_1 = Critic(critic_input_dims).to(device)
         self.critic_2 = Critic(critic_input_dims).to(device)
@@ -89,14 +88,12 @@ class MASAC:
         self.critic_1_optimizer = T.optim.Adam(self.critic_1.parameters(), lr=lr_c)
         self.critic_2_optimizer = T.optim.Adam(self.critic_2.parameters(), lr=lr_c)
 
-        # Decentralized actors (one per agent) - Input is local state (dim 4), output is mean and log_std (dim 1 each)
         self.actors = [Actor(s_dim=4, n_actions=1).to(device) for _ in range(num_agents)]
         self.actor_optimizers = [T.optim.Adam(actor.parameters(), lr=lr_a) for actor in self.actors]
 
-        # Entropy temperature (optional automatic tuning)
         self.log_alpha = T.zeros(1, requires_grad=True, device=device)
         self.alpha_optimizer = T.optim.Adam([self.log_alpha], lr=lr_a)
-        self.target_entropy = -T.prod(T.tensor(1, dtype=T.float32, device=device)).item() # Target entropy for 1D action
+        self.target_entropy = -T.prod(T.tensor(1, dtype=T.float32, device=device)).item()
 
         self.update_network_parameters(tau=1)
 
@@ -106,7 +103,6 @@ class MASAC:
         mean, log_std = self.actors[agent_index](s)
         std = T.exp(log_std)
         normal = T.distributions.Normal(mean, std)
-        # Reparameterization trick
         x_t = normal.rsample()
         action = T.tanh(x_t)
         self.actors[agent_index].train()
@@ -153,10 +149,8 @@ class MASAC:
         actor_losses = []
         log_probs_total = []
         for agent_idx in range(self.num_agents):
-            # Extract local states for this agent in batch
             local_states = self._get_local_state_batch(states, agent_idx).to(device)
 
-            # Compute actions & log probs for the current policy
             mean, log_std = self.actors[agent_idx](local_states)
             std = T.exp(log_std)
             normal = T.distributions.Normal(mean, std)
@@ -164,27 +158,23 @@ class MASAC:
             current_agent_action = T.tanh(x_t)
             log_prob = self._calculate_log_prob(mean, log_std, current_agent_action)
 
-            # Reconstruct joint actions - replace the action of the current agent
             new_actions = actions.clone()
             batch_indices = T.arange(self.batch_size).to(device)
             new_actions[batch_indices, agent_idx] = current_agent_action.squeeze()
 
-            # Evaluate Q-values for the current actor policy's joint action
             q1_pi = self.critic_1(states, new_actions)
             q2_pi = self.critic_2(states, new_actions)
             min_q_pi = T.min(q1_pi, q2_pi)
 
-            # Actor loss (SAC objective)
             actor_loss = (T.exp(self.log_alpha) * log_prob - min_q_pi).mean()
             actor_losses.append(actor_loss)
             log_probs_total.append(log_prob.mean().detach())
 
             self.actor_optimizers[agent_idx].zero_grad()
             actor_loss.backward()
-            T.nn.utils.clip_grad_norm_(self.actors[agent_idx].parameters(), max_norm=1.0) # Adjust max_norm
+            T.nn.utils.clip_grad_norm_(self.actors[agent_idx].parameters(), max_norm=1.0) 
             self.actor_optimizers[agent_idx].step()
 
-        # Entropy temperature tuning (optional)
         if log_probs_total:
             log_probs_mean = T.stack(log_probs_total).mean()
             alpha_loss = -(self.log_alpha * (log_probs_mean + self.target_entropy)).mean()
@@ -197,7 +187,6 @@ class MASAC:
         if tau is None:
             tau = self.tau
 
-        # Soft update for both target critics
         for target_param, param in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
             target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
@@ -236,7 +225,6 @@ class MASAC:
         std = T.exp(log_std)
         normal = T.distributions.Normal(mean, std)
         log_prob = normal.log_prob(self._inverse_tanh(action))
-        # Squash correction (from original SAC paper)
         log_prob -= T.log(1 - action.pow(2) + 1e-6)
         return log_prob.sum(dim=-1, keepdim=True)
 

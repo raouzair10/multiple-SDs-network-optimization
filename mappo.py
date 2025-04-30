@@ -9,14 +9,14 @@ print(f"Device set to: {device}")
 
 ################################## Rollout Buffer ##################################
 class RolloutBuffer:
-    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2): # action_dim is 2
+    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2):
         self.num_agents = num_agents
         self.global_states = np.zeros([buffer_size, global_state_dim], dtype=np.float32)
-        self.actions = np.zeros([buffer_size, action_dim], dtype=np.float32) # Store 2D actions
-        self.logprobs = np.zeros([buffer_size], dtype=np.float32) # Store logprob of the active agent
+        self.actions = np.zeros([buffer_size, action_dim], dtype=np.float32)
+        self.logprobs = np.zeros([buffer_size], dtype=np.float32) 
         self.rewards = np.zeros([buffer_size], dtype=np.float32)
         self.is_terminals = np.zeros([buffer_size], dtype=np.bool_)
-        self.agent_indices = np.zeros([buffer_size], dtype=np.int32) # Track active agent
+        self.agent_indices = np.zeros([buffer_size], dtype=np.int32)
         self.ptr = 0
         self.buffer_size = buffer_size
 
@@ -51,7 +51,7 @@ class RolloutBuffer:
 
 ################################## Actor Network ##################################
 class Actor(nn.Module):
-    def __init__(self, state_dim, action_dim=1, has_continuous_action_space=True, action_std_init=0.6): # action_dim = 1
+    def __init__(self, state_dim, action_dim=1, has_continuous_action_space=True, action_std_init=0.6):
         super(Actor, self).__init__()
         self.has_continuous_action_space = has_continuous_action_space
         self.action_dim = action_dim
@@ -73,7 +73,7 @@ class Actor(nn.Module):
             return self.actor(state)
 ################################## Centralized Critic Network ##################################
 class Critic(nn.Module):
-    def __init__(self, state_dim_centralized, action_dim_total=2): # action_dim_total = 2
+    def __init__(self, state_dim_centralized, action_dim_total=2):
         super(Critic, self).__init__()
         self.critic = nn.Sequential(
             nn.Linear(state_dim_centralized + action_dim_total, 64),
@@ -167,7 +167,6 @@ class MAPPO:
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # Optimize actors
         for agent_id in range(self.num_agents):
             actor_optimizer = self.actor_optimizers[agent_id]
             actor_optimizer.zero_grad()
@@ -201,7 +200,6 @@ class MAPPO:
                 actor_loss.backward()
                 actor_optimizer.step()
 
-        # Copy new weights into old policies
         for i in range(self.num_agents):
             self.actors_old[i].load_state_dict(self.actors[i].state_dict())
         self.critics_old.load_state_dict(self.critics.state_dict())

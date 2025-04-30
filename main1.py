@@ -433,6 +433,7 @@ for i in range(MAX_EPISODES):
     dr_rewardall_mappo.append(ep_dr_mappo)
     sd1_freq.append(sd1_count)
     sd2_freq.append(sd2_count)
+
     
     ep_reward_greedy = np.reshape(ep_reward_greedy/MAX_EP_STEPS, (1,))
     ep_rewardall_greedy.append(ep_reward_greedy)
@@ -453,6 +454,8 @@ for i in range(MAX_EPISODES):
     dr_rewardall_random.append(ep_dr_random)
 
 # ########### PLOTTING FIGURES ###############
+print(f'sd1: {sd1_freq}')
+print(f'sd2: {sd2_freq}')
 
 # Plot for energy harvested
 fig1, ax = plt.subplots()
