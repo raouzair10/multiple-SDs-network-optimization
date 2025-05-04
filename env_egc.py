@@ -60,9 +60,6 @@ class Env_cellular():
         self.hn_SD_BS = fading_SD_BS * PL_SD_BS # Effective channel gains for SD-BS links
         # [1.80299692e-06 9.44854682e-07]
 
-        self.h0 = self.hn_SD_BS / self.noise    # Normalized channel gains for SD-BS links
-        # [1.80299692e+08 9.44854682e+07]
-
     def step(self, actions, state, j): # state: [[hn-SD1-PDi hn-SD1-BS battery-SD1 hn-SD2-PDi hn-SD2-BS battery-SD2 hn-PDi-BS]]
         active_sd = int(actions[0])
         action = actions[1]
@@ -96,7 +93,7 @@ class Env_cellular():
         alphax2 = max(alpha01, alpha02)
         alphan = min(1, max(alphaxx, alphax2))  # Optimal fraction of time allocated for data transmission
         
-        # Compute Reward
+        data_rate = 0
         reward = 0
         if En_bar[active_sd] == self.T * self.eta * self.Pn * hn0:
             P0n=0
@@ -109,14 +106,14 @@ class Env_cellular():
             P0n = (1 - alphan) * self.eta * self.Pn * hn0 - self.w_egc - self.w_d / self.L * alphan - En_bar[active_sd] / self.L * alphan / self.T - self.w_csk
             if P0n < 0:
                 P0n = 0
-            reward = alphan * np.log(1 + P0n * h0[active_sd] / (1 + self.Pn * hn[active_sd]))
+            data_rate = alphan * np.log2(1 + P0n * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula        
+            reward = data_rate
 
         # Handle NaN Rewards
         if math.isnan(reward):
             reward = 0
 
         # Energy Efficiency Calculation
-        data_rate = alphan * np.log(1 + P0n * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
         energy_consumed = (P0n + self.w_csk) * self.T  # Energy consumed
         energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
 
@@ -136,7 +133,7 @@ class Env_cellular():
         # Represents the actual energy harvested during the time allocated for energy harvesting
         EHD = (1 - alphan) * self.eta * self.T * self.Pn * hn0 / self.L
 
-        return reward, state_next, EHD, energy_efficiency
+        return reward, state_next, EHD, energy_efficiency, data_rate
 
     def step_greedy(self, state, active_sd, j):
         hn = []             # Normalized PD-SD channel gains
@@ -158,20 +155,21 @@ class Env_cellular():
             else:                   # Net change in battery energy (only harvested)
                 En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d)
 
+        data_rate = alphan * np.log2(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
+
         # Compute Reward
         reward = 0
         # Compute Reward
         if alphan==0:
             reward = 0
         else:
-            reward = alphan * np.log(1 + self.Pmax*h0[active_sd] / (1 + self.Pn * hn[active_sd]))
+            reward = data_rate
 
         # Handle NaN Rewards
         if math.isnan(reward):
             reward = 0
 
         # Energy Efficiency Calculation
-        data_rate = alphan * np.log(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
         energy_consumed = (self.Pmax + self.w_csk) * self.T  # Energy consumed
         energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
 
@@ -191,7 +189,7 @@ class Env_cellular():
         # Represents the actual energy harvested during the time allocated for energy harvesting
         EHG = (1 - alphan) * self.eta * self.T * self.Pn * hn0
 
-        return reward, state_next, EHG, energy_efficiency
+        return reward, state_next, EHG, energy_efficiency, data_rate
 
     def step_random(self, state, active_sd, j):
         hn = []             # Normalized PD-SD channel gains
@@ -213,20 +211,21 @@ class Env_cellular():
             else:                   # Net change in battery energy (only harvested)
                 En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) / self.L - self.w_egc - self.w_d)
 
+        data_rate = alphan * np.log2(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
+
         # Compute Reward
         reward = 0
         # Compute Reward
         if alphan==0:
             reward = 0
         else:
-            reward = alphan * np.log(1 + self.Pmax*h0[active_sd] / (1 + self.Pn * hn[active_sd]))
+            reward = data_rate
 
         # Handle NaN Rewards
         if math.isnan(reward):
             reward = 0
 
         # Energy Efficiency Calculation
-        data_rate = alphan * np.log(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
         energy_consumed = (self.Pmax + self.w_csk) * self.T  # Energy consumed
         energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
 
@@ -246,7 +245,7 @@ class Env_cellular():
         # Represents the actual energy harvested during the time allocated for energy harvesting
         EHG = (1 - alphan) * self.eta * self.T * self.Pn * hn0
 
-        return reward, state_next, EHG, energy_efficiency
+        return reward, state_next, EHG, energy_efficiency, data_rate
 
     def reset(self):
         batter_ini = [self.emax] * self.num_SDs
