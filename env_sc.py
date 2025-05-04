@@ -58,9 +58,7 @@ class Env_cellular():
         self.hn_SD_BS = fading_SD_BS * PL_SD_BS # Effective channel gains for SD-BS links
         # [1.80299692e-06 9.44854682e-07]
 
-    def step(self, actions, state, j): # state: [[hn-SD1-PDi hn-SD1-BS battery-SD1 hn-SD2-PDi hn-SD2-BS battery-SD2 hn-PDi-BS]]
-        active_sd = int(actions[0])
-        action = actions[1]
+    def step(self, active_sd, action, state, j): # state: [[hn-SD1-PDi hn-SD1-BS battery-SD1 hn-SD2-PDi hn-SD2-BS battery-SD2 hn-PDi-BS]]
         hn = []             # Normalized PD-SD channel gains
         h0 = []             # Normalized SD-BS channel gains
         En = []             # Battery levels
@@ -75,8 +73,8 @@ class Env_cellular():
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
                 En_bar[sd_index] = action * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d) - (1 - action) * min(En[sd_index], self.T * self.Pmax + self.T * self.w_csk)
-            else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
+            # else:                   # Net change in battery energy (only harvested)
+            #     En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
 
 
         # Intermediate Variables for Reward Calculation
@@ -94,7 +92,7 @@ class Env_cellular():
         
         data_rate = 0
         reward = 0
-        if En_bar[active_sd] == self.T * self.eta * self.Pn * hn0:
+        if En_bar[active_sd] == self.T * self.eta * self.Pn * hn0 or En[active_sd] == 0:
             P0n=0
             reward = 0  # If no energy is available or allocated, reward is zero
         elif alphan == 0: #<= 0.00000001:
@@ -114,19 +112,19 @@ class Env_cellular():
             reward = 0
 
         # Energy Efficiency Calculation
-        energy_consumed = (P0n + self.w_csk) * self.T  # Energy consumed
-        energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
+        energy_efficiency = data_rate / (P0n + self.w_csk)  # Data rate per unit energy
 
-        batter_new = []
-        for s in range(self.num_SDs):
-            batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
-                
+        # batter_new = []
+        # for s in range(self.num_SDs):
+        #     batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
+        En[active_sd] = min(self.emax, En[active_sd] + En_bar[active_sd])
+
         # Next state, including updated channel gains and battery level
         state_next = []
         for sd in range(self.num_SDs):
             state_next.append(self.hn_PD_SD[(j+1) % self.num_PDs, sd])
             state_next.append(self.hn_SD_BS[sd])
-            state_next.append(batter_new[sd])
+            state_next.append(En[sd])
         state_next.append(self.hn_PD_BS[(j+1) % self.num_PDs])
         state_next = np.reshape(state_next, (1, self.s_dim))
 
@@ -152,8 +150,8 @@ class Env_cellular():
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
                 En_bar[sd_index] = alphan * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.T * self.w_csk)
-            else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
+            # else:                   # Net change in battery energy (only harvested)
+            #     En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
         
         data_rate = alphan * np.log2(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
 
@@ -170,19 +168,19 @@ class Env_cellular():
             reward = 0
 
         # Energy Efficiency Calculation
-        energy_consumed = (self.Pmax + self.w_csk) * self.T  # Energy consumed
-        energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
+        energy_efficiency = data_rate / (self.Pmax + self.w_csk)  # Data rate per unit energy
 
-        batter_new = []
-        for s in range(self.num_SDs):
-            batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
-                
+        # batter_new = []
+        # for s in range(self.num_SDs):
+        #     batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
+        En[active_sd] = min(self.emax, En[active_sd] + En_bar[active_sd])
+
         # Next state, including updated channel gains and battery level
         state_next = []
         for sd in range(self.num_SDs):
             state_next.append(self.hn_PD_SD[(j+1) % self.num_PDs, sd])
             state_next.append(self.hn_SD_BS[sd])
-            state_next.append(batter_new[sd])
+            state_next.append(En[sd])
         state_next.append(self.hn_PD_BS[(j+1) % self.num_PDs])
         state_next = np.reshape(state_next, (1, self.s_dim))
 
@@ -208,8 +206,8 @@ class Env_cellular():
         for sd_index in range(self.num_SDs):
             if sd_index == active_sd:     # Net change in battery energy (harvested - consumed)
                 En_bar[sd_index] = alphan * min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d) - (1 - alphan) * min(En[sd_index], self.T * self.Pmax + self.T * self.w_csk)
-            else:                   # Net change in battery energy (only harvested)
-                En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
+            # else:                   # Net change in battery energy (only harvested)
+            #     En_bar[sd_index] = min(self.emax - En[sd_index], (self.T * self.eta * self.Pn * hn0) - self.w_d)
         
         data_rate = alphan * np.log2(1 + self.Pmax * h0[active_sd] / (1 + self.Pn * hn[active_sd]))  # Shannon's capacity formula
 
@@ -226,19 +224,19 @@ class Env_cellular():
             reward = 0
 
         # Energy Efficiency Calculation
-        energy_consumed = (self.Pmax + self.w_csk) * self.T  # Energy consumed
-        energy_efficiency = data_rate / energy_consumed  # Data rate per unit energy
+        energy_efficiency = data_rate / (self.Pmax + self.w_csk)  # Data rate per unit energy
 
-        batter_new = []
-        for s in range(self.num_SDs):
-            batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
-                
+        # batter_new = []
+        # for s in range(self.num_SDs):
+        #     batter_new.append(min(self.emax, En[s] + En_bar[s]))    # Updated battery level after accounting for energy harvested and consumed
+        En[active_sd] = min(self.emax, En[active_sd] + En_bar[active_sd])
+
         # Next state, including updated channel gains and battery level
         state_next = []
         for sd in range(self.num_SDs):
             state_next.append(self.hn_PD_SD[(j+1) % self.num_PDs, sd])
             state_next.append(self.hn_SD_BS[sd])
-            state_next.append(batter_new[sd])
+            state_next.append(En[sd])
         state_next.append(self.hn_PD_BS[(j+1) % self.num_PDs])
         state_next = np.reshape(state_next, (1, self.s_dim))
 

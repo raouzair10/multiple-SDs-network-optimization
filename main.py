@@ -7,15 +7,14 @@ from env_sc import Env_cellular as env_sc
 from env_mrc import Env_cellular as env_mrc
 import matplotlib.pyplot as plt
 import matplotlib
-
 from masac import MASAC
-matplotlib.use('TkAgg')
-from maddpg import Agent as MADDPG
+from maddpg import MADDPG
 from matd3 import MATD3
 from mappo import MAPPO
 import warnings;
 warnings.filterwarnings('ignore')
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 from matplotlib.patches import ConnectionPatch, Rectangle
@@ -57,7 +56,7 @@ action_std_decay_freq = int(2.5e6)    # action_std decay frequency (in num times
 update_timestep_ppo = MAX_EP_STEPS * 3    # update policy every n timesteps
 K_epochs_ppo = 40                         # update policy for K epochs in one PPO update
 eps_clip_ppo = 0.2                        # clip parameter for PPO
-a_dim_ppo = 2 # Action dimension per agent (time-sharing fraction)
+a_dim_ppo = num_SDs # Action dimension per agent (time-sharing fraction)
 s_dim_ppo = 4 # Local state dimension for each SD [hn_PD_SD, hn_SD_BS, battery_level, hn_PD_BS]
 
 ##################### Hyperparameters for MATD3 #####################
@@ -76,7 +75,7 @@ np.random.seed(seed)
 
 ##################### Network Nodes Deployment #####################
 location_PDs = np.array([[0, 1],[0,1000]])
-location_SDs = np.array([[1,1],[2,2]])
+location_SDs = np.array([[1,1],[1,1000]])
 
 # location_PDs = np.random.uniform(low=0, high=1000, size=(num_PDs, 2)).astype(int)
 # # [[548 715]
@@ -192,13 +191,15 @@ mappo_agent = MAPPO(
     local_state_dim=s_dim_ppo,
     global_state_dim=s_dim,
     action_dim=a_dim_ppo,
-    lr_actor=0.0001,
-    lr_critic=0.0005,
-    gamma=0.99,
-    K_epochs=10,
+    lr_actor=LR_A,
+    lr_critic=LR_C,
+    gamma=GAMMA,
+    K_epochs=40,
     eps_clip=0.2,
     buffer_size=10000,
-    action_std_init=0.6
+    action_std_init=0.6,
+    action_std_decay_rate=0.05,  # You can adjust this value
+    min_action_std=0.1             # You can adjust this value
 )
 
 #-----------------------------------------------------------------------------------------------------------------------
@@ -241,6 +242,16 @@ ee_rewardall_masac = []
 ee_rewardall_greedy = []
 ee_rewardall_random = []
 
+dr_rewardall_ddpg = []
+dr_rewardall_matd3 = []
+dr_rewardall_mappo = []
+dr_rewardall_masac = [] 
+dr_rewardall_greedy = []
+dr_rewardall_random = []
+
+sd1_freq = []
+sd2_freq = []
+
 for i in range(MAX_EPISODES):
     batter_ini = myenv.reset()
     s = []
@@ -268,6 +279,13 @@ for i in range(MAX_EPISODES):
     ep_ee_random = 0
     ep_ee_greedy = 0
 
+    ep_dr_ddpg = 0
+    ep_dr_matd3 = 0
+    ep_dr_mappo = 0
+    ep_dr_masac = 0
+    ep_dr_random = 0
+    ep_dr_greedy = 0
+
     ep_reward_ddpg = 0
     ep_reward_matd3 = 0
     ep_reward_mappo = 0
@@ -282,6 +300,9 @@ for i in range(MAX_EPISODES):
     eh_reward_random = 0
     eh_reward_greedy = 0
 
+    sd1_count = 0
+    sd2_count = 0
+
     for j in range(MAX_EP_STEPS):
         ######################## MADDPG ########################
         sd_ddpg, s_local_ddpg = choose_SD(s_ddpg)
@@ -294,6 +315,7 @@ for i in range(MAX_EPISODES):
         ep_reward_ddpg += r_ddpg
         eh_reward_ddpg += EHD_maddpg
         ep_ee_ddpg += ee_ddpg
+        ep_dr_ddpg += dr_ddpg
 
         ######################## MATD3 ########################
         sd_matd3, s_local_matd3 = choose_SD(s_matd3)
@@ -306,9 +328,14 @@ for i in range(MAX_EPISODES):
         ep_reward_matd3 += r_matd3
         eh_reward_matd3 += EHD_matd3
         ep_ee_matd3 += ee_matd3
+        ep_dr_matd3 += dr_matd3
 
         ######################## MAPPO ########################
         sd_mappo, _ = choose_SD(s_mappo)  # Choose which SD acts
+        if sd_mappo == 0:
+            sd1_count += 1
+        else:
+            sd2_count += 1 
         global_state_tensor = torch.tensor(s_mappo, dtype=torch.float32).to(device)
         action_mappo, logprob_mappo = mappo_agent.select_action(global_state_tensor, sd_mappo)
 
@@ -320,6 +347,7 @@ for i in range(MAX_EPISODES):
         ep_reward_mappo += r_mappo
         eh_reward_mappo += EHD_mappo
         ep_ee_mappo += ee_mappo
+        ep_dr_mappo += dr_mappo
 
         ######################## MASAC ########################
         sd_masac, s_local_masac = choose_SD(s_masac)
@@ -334,6 +362,7 @@ for i in range(MAX_EPISODES):
         ep_reward_masac += r_masac
         eh_reward_masac += EHD_masac
         ep_ee_masac += ee_masac
+        ep_dr_masac += dr_masac
 
         ######################## Greedy ########################
         sd_greedy, _ = choose_SD(s_greedy)
@@ -342,6 +371,7 @@ for i in range(MAX_EPISODES):
         ep_reward_greedy += r_greedy
         eh_reward_greedy += EHG
         ep_ee_greedy += ee_greedy
+        ep_dr_greedy += dr_greedy
 
         ######################## Random ########################
         sd_random, _ = choose_SD(s_random)
@@ -350,6 +380,7 @@ for i in range(MAX_EPISODES):
         ep_reward_random += r_random
         eh_reward_random += EHR
         ep_ee_random += ee_random
+        ep_dr_random += dr_random
 
         if var > 0.1:
             var *= .9998
@@ -366,13 +397,22 @@ for i in range(MAX_EPISODES):
 
         if j == MAX_EP_STEPS - 1:
             print('Avg EE for Episode:', i,
-                ' DDPG: %i' % int(ep_ee_ddpg / MAX_EP_STEPS),
+                'MADDPG: %i' % int(ep_ee_ddpg / MAX_EP_STEPS),
                 'MATD3: %i' % int(ep_ee_matd3 / MAX_EP_STEPS),
                 'MAPPO: %i' % int(ep_ee_mappo / MAX_EP_STEPS),
                 'MASAC: %i' % int(ep_ee_masac / MAX_EP_STEPS),
                 'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
                 'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
-                  
+            
+            print('Average SR for Episode:', i,
+                'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
+                'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
+                'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
+                'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
+                'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
+                'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
+            
+            print()
             
     ep_reward_ddpg = np.reshape(ep_reward_ddpg / MAX_EP_STEPS, (1,))
     ep_rewardall_ddpg.append(ep_reward_ddpg)
@@ -380,6 +420,8 @@ for i in range(MAX_EPISODES):
     eh_rewardall_ddpg.append(eh_reward_ddpg)
     ep_ee_ddpg = np.reshape(ep_ee_ddpg / MAX_EP_STEPS, (1,))
     ee_rewardall_ddpg.append(ep_ee_ddpg)
+    ep_dr_ddpg = np.reshape(ep_dr_ddpg / MAX_EP_STEPS, (1,))
+    dr_rewardall_ddpg.append(ep_dr_ddpg)
 
     ep_reward_matd3 = np.reshape(ep_reward_matd3 / MAX_EP_STEPS, (1,))
     ep_rewardall_matd3.append(ep_reward_matd3)
@@ -387,6 +429,17 @@ for i in range(MAX_EPISODES):
     eh_rewardall_matd3.append(eh_reward_matd3)
     ep_ee_matd3 = np.reshape(ep_ee_matd3 / MAX_EP_STEPS, (1,))
     ee_rewardall_matd3.append(ep_ee_matd3)
+    ep_dr_matd3 = np.reshape(ep_dr_matd3 / MAX_EP_STEPS, (1,))
+    dr_rewardall_matd3.append(ep_dr_matd3)
+
+    ep_reward_masac = np.reshape(ep_reward_masac / MAX_EP_STEPS, (1,))
+    ep_rewardall_masac.append(ep_reward_masac)
+    eh_reward_masac = np.reshape(eh_reward_masac / MAX_EP_STEPS, (1,))
+    eh_rewardall_masac.append(eh_reward_masac)
+    ep_ee_masac = np.reshape(ep_ee_masac / MAX_EP_STEPS, (1,))
+    ee_rewardall_masac.append(ep_ee_masac)
+    ep_dr_masac = np.reshape(ep_dr_masac / MAX_EP_STEPS, (1,))
+    dr_rewardall_masac.append(ep_dr_masac)
 
     ep_reward_mappo = np.reshape(ep_reward_mappo / MAX_EP_STEPS, (1,))
     ep_rewardall_mappo.append(ep_reward_mappo)
@@ -394,6 +447,10 @@ for i in range(MAX_EPISODES):
     eh_rewardall_mappo.append(eh_reward_mappo)
     ep_ee_mappo = np.reshape(ep_ee_mappo / MAX_EP_STEPS, (1,))
     ee_rewardall_mappo.append(ep_ee_mappo)
+    ep_dr_mappo = np.reshape(ep_dr_mappo / MAX_EP_STEPS, (1,))
+    dr_rewardall_mappo.append(ep_dr_mappo)
+    sd1_freq.append(sd1_count)
+    sd2_freq.append(sd2_count)
     
     ep_reward_greedy = np.reshape(ep_reward_greedy/MAX_EP_STEPS, (1,))
     ep_rewardall_greedy.append(ep_reward_greedy)
@@ -401,6 +458,8 @@ for i in range(MAX_EPISODES):
     eh_rewardall_greedy.append(eh_reward_greedy)
     ep_ee_greedy = np.reshape(ep_ee_greedy/MAX_EP_STEPS, (1,))
     ee_rewardall_greedy.append(ep_ee_greedy)
+    ep_dr_greedy = np.reshape(ep_dr_greedy/MAX_EP_STEPS, (1,))
+    dr_rewardall_greedy.append(ep_dr_greedy)
 
     ep_reward_random = np.reshape(ep_reward_random/MAX_EP_STEPS, (1,))
     ep_rewardall_random.append(ep_reward_random)
@@ -408,33 +467,25 @@ for i in range(MAX_EPISODES):
     eh_rewardall_random.append(eh_reward_random)
     ep_ee_random = np.reshape(ep_ee_random/MAX_EP_STEPS, (1,))
     ee_rewardall_random.append(ep_ee_random)
-
-
-# ######### CALCULATING AVERAGE REWARDS AND EH ##########
-avg_rewards = [sum(ep_rewardall_ddpg)/len(ep_rewardall_ddpg),
-               sum(ep_rewardall_matd3)/len(ep_rewardall_matd3),
-               sum(ep_rewardall_mappo)/len(ep_rewardall_mappo),
-                sum(ep_rewardall_greedy)/len(ep_rewardall_greedy),
-                sum(ep_rewardall_random)/len(ep_rewardall_random)]
-
-avg_harvested_energy = [sum(eh_rewardall_ddpg)/len(eh_rewardall_ddpg),
-                        sum(eh_rewardall_matd3)/len(eh_rewardall_matd3),
-                        sum(eh_rewardall_mappo)/len(eh_rewardall_mappo),
-                        sum(eh_rewardall_greedy)/len(eh_rewardall_greedy),
-                        sum(eh_rewardall_random)/len(eh_rewardall_random)]
+    ep_dr_random = np.reshape(ep_dr_random/MAX_EP_STEPS, (1,))
+    dr_rewardall_random.append(ep_dr_random)
 
 # ########### PLOTTING FIGURES ###############
-fig, ax = plt.subplots()
-ax.plot(ep_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
-ax.plot(ep_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(ep_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
-ax.plot(ep_rewardall_greedy, "o-", label='Greedy', linewidth=0.75)
-ax.plot(ep_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+
+# Plot for energy harvested
+fig1, ax = plt.subplots()
+ax.plot(eh_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
+ax.plot(eh_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
+ax.plot(eh_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
+ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(eh_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
-ax.set_ylabel("Epsiodic Rewards")
+ax.set_ylabel("Energy Harvested (J)")
 ax.legend()
 ax.margins(x=0)
-ax.set_xlim(1, MAX_EPISODES-1)
+ax.set_xlim(0, MAX_EPISODES)
+ax.set_yscale('log')
 ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
 ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
@@ -443,42 +494,19 @@ ax.tick_params(which="minor", bottom=False, left=False)
 legend1 = ax.legend()
 legend1.set_draggable(True)
 
-fig.savefig('Fig1.eps', format='eps', bbox_inches='tight')
-fig.savefig('Fig1.png', format='png', bbox_inches='tight')
+fig1.savefig('EH.eps', format='eps', bbox_inches='tight')
+fig1.savefig('EH.png', format='png', bbox_inches='tight')
+
 plt.show()
 
-# Plot for energy harvested
+# Plot for avg EE
 fig2, ax = plt.subplots()
-ax.plot(eh_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
-ax.plot(eh_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
-ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75)
-ax.plot(eh_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
-ax.set_xlabel("Episodes")
-ax.set_ylabel("Energy Harvested (J)")
-ax.legend()
-ax.margins(x=0)
-ax.set_xlim(1, MAX_EPISODES-1)
-ax.set_yscale('log')
-ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-ax.minorticks_on()
-ax.tick_params(which="minor", bottom=False, left=False)
-
-# Make the legend draggable
-legend2 = ax.legend()
-legend2.set_draggable(True)
-
-fig2.savefig('Fig2.eps', format='eps', bbox_inches='tight')
-fig2.savefig('Fig2.png', format='png', bbox_inches='tight')
-
-plt.show()
-
-fig3, ax = plt.subplots()
 ax.plot(ee_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
 ax.plot(ee_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75)
+ax.plot(ee_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
 ax.plot(ee_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color= 'orange')
-ax.plot(ee_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+ax.plot(ee_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Energy Efficiency (b/J)")
 ax.legend()
@@ -488,41 +516,91 @@ ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
 ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 
-# Add a zoomed-in inset plot for Greedy and Random comparison
-axins = inset_axes(ax, width="18%", height="13%", loc=4, borderpad=4)  # Adjust size and location
-axins.plot(ee_rewardall_greedy, "o-", label='Greedy', color='orange', linewidth=0.75)
-axins.plot(ee_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
+# # Add a zoomed-in inset plot for Greedy and Random comparison
+# axins = inset_axes(ax, width="18%", height="13%", loc=4, borderpad=4)  # Adjust size and location
+# axins.plot(ee_rewardall_greedy, "o-", label='Greedy', color='orange', linewidth=0.75)
+# axins.plot(ee_rewardall_random, "x-", label='Random', color='black', linewidth=0.75)
 
-# Set limits for the zoomed-in section that matches the data in the main plot
-x1, x2 = 165, 175 # Adjust based on your data range for episodes
-y1, y2 = 40, 60  # Adjust to fit the energy efficiency range
-axins.set_xlim(x1, x2)
-axins.set_ylim(y1, y2)
+# # Set limits for the zoomed-in section that matches the data in the main plot
+# x1, x2 = 165, 175 # Adjust based on your data range for episodes
+# y1, y2 = 40, 60  # Adjust to fit the energy efficiency range
+# axins.set_xlim(x1, x2)
+# axins.set_ylim(y1, y2)
 
-# Add grid and adjust ticks for the inset
-axins.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-axins.set_xticks([165, 170, 175])  # Adjust to your actual data range
-axins.set_yticks([45, 50, 55])    # Adjust y-axis ticks based on zoomed data
+# # Add grid and adjust ticks for the inset
+# axins.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+# axins.set_xticks([165, 170, 175])  # Adjust to your actual data range
+# axins.set_yticks([45, 50, 55])    # Adjust y-axis ticks based on zoomed data
 
-# Highlight the zoomed region on the main plot with a rectangle
-rect = Rectangle((x1, -5000), x2-x1, 10000, linewidth=1, edgecolor='black', facecolor='none', linestyle='--')
-ax.add_patch(rect)
+# # Highlight the zoomed region on the main plot with a rectangle
+# rect = Rectangle((x1, -5000), x2-x1, 10000, linewidth=1, edgecolor='black', facecolor='none', linestyle='--')
+# ax.add_patch(rect)
 
-con = ConnectionPatch(xyA=((x1 + x2) / 2, (y1 + y2) / 2 + 5000 ), coordsA=ax.transData,
-                      xyB=(x1 + 4, y1), coordsB=axins.transData,
-                      arrowstyle='->', color='black', lw=1)
+# con = ConnectionPatch(xyA=((x1 + x2) / 2, (y1 + y2) / 2 + 5000 ), coordsA=ax.transData,
+#                       xyB=(x1 + 4, y1), coordsB=axins.transData,
+#                       arrowstyle='->', color='black', lw=1)
 
-axins.add_artist(con)
+# axins.add_artist(con)
 
 
-# Move the legend to the bottom left
-legend3 = ax.legend(loc='lower left', bbox_to_anchor=(0.1, 0.1), edgecolor="black")
-legend3.get_frame().set_alpha(None)
-legend3.get_frame().set_facecolor((1, 1, 1, 0))
-legend3.set_draggable(True)
+# # Move the legend to the bottom left
+# legend3 = ax.legend(loc='lower left', bbox_to_anchor=(0.1, 0.1), edgecolor="black")
+# legend3.get_frame().set_alpha(None)
+# legend3.get_frame().set_facecolor((1, 1, 1, 0))
+legend2 = ax.legend()
+legend2.set_draggable(True)
 
 # Save figures with different formats
-fig3.savefig('Fig3.eps', format='eps', bbox_inches='tight')
-fig3.savefig('Fig3.png', format='png', bbox_inches='tight')
+fig2.savefig('EE.eps', format='eps', bbox_inches='tight')
+fig2.savefig('EE.png', format='png', bbox_inches='tight')
+
+plt.show()
+
+# Plot for avg sum rate
+fig3, ax = plt.subplots()
+ax.plot(dr_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
+ax.plot(dr_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
+ax.plot(dr_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='yellow')
+ax.plot(dr_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
+ax.plot(dr_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(dr_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Average Sum Rate (b/s)")
+ax.legend()
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+
+# Make the legend draggable
+legend3 = ax.legend()
+legend3.set_draggable(True)
+
+fig3.savefig('SR.eps', format='eps', bbox_inches='tight')
+fig3.savefig('SR.png', format='png', bbox_inches='tight')
+
+plt.show()
+
+# Plot for device selection frequency
+fig4, ax = plt.subplots()
+ax.plot(sd1_freq, "^-", label='SD1', linewidth=0.75 , color= 'red')
+ax.plot(sd2_freq, "v-", label='SD2', linewidth=0.75, color='yellow')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Device Selection Frequency")
+ax.legend()
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.set_ylim(0, MAX_EP_STEPS)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+
+# Make the legend draggable
+legend4 = ax.legend()
+legend4.set_draggable(True)
+
+fig4.savefig('DSF.eps', format='eps', bbox_inches='tight')
+fig4.savefig('DSF.png', format='png', bbox_inches='tight')
 
 plt.show()

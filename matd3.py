@@ -38,7 +38,6 @@ class MATD3():
         self.target_actors = [Actor(s_dim=(input_dims // num_agents) + 1).to(device) for _ in range(num_agents)]
         self.actor_optimizers = [T.optim.Adam(actor.parameters(), lr=alpha) for actor in self.actors]
 
-        # Sync targets
         self.update_network_parameters(tau=1)
 
     def choose_action(self, s, agent_index):
@@ -46,7 +45,7 @@ class MATD3():
         s = T.FloatTensor(s.reshape(1, -1)).to(device)
         a = self.actors[agent_index](s)
         self.actors[agent_index].train()
-        return agent_index, a.cpu().data.numpy().flatten()
+        return a.cpu().data.numpy().flatten()
 
     def remember(self, state, action, reward, state_):
         self.memory.store_transition(state, action, reward, state_)
@@ -57,7 +56,6 @@ class MATD3():
 
         self.learn_step += 1
 
-        # Sample batch
         states, actions, rewards, next_states = self.memory.sample_buffer(self.batch_size)
 
         states = T.tensor(states, dtype=T.float).to(device)
@@ -68,7 +66,6 @@ class MATD3():
         state_dim_per_agent = (states.shape[1] - 1) // self.num_agents
         shared_feature_idx = -1
 
-        # --------------- Target Actions with Noise -----------------
         target_actions = []
         for agent_idx in range(self.num_agents):
             start = agent_idx * state_dim_per_agent
@@ -82,13 +79,12 @@ class MATD3():
 
             # Add clipped noise
             noise = (T.randn_like(next_action) * self.policy_noise).clamp(-self.noise_clip, self.noise_clip)
-            next_action = (next_action + noise).clamp(-1, 1)  # assuming action range is [-1, 1]
+            next_action = (next_action + noise).clamp(-1, 1) 
 
             target_actions.append(next_action)
 
         target_actions = T.cat(target_actions, dim=1)
 
-        # --------------- Critic Update -----------------
         q1_next = self.target_critic_1(next_states, target_actions).view(-1, 1)
         q2_next = self.target_critic_2(next_states, target_actions).view(-1, 1)
 
@@ -112,7 +108,6 @@ class MATD3():
         self.critic_optimizer_1.step()
         self.critic_optimizer_2.step()
 
-        # --------------- Delayed Actor Update -----------------
         if self.learn_step % self.policy_delay == 0:
             actor_losses = []
             for agent_idx in range(self.num_agents):
@@ -139,22 +134,18 @@ class MATD3():
             for agent_idx in range(self.num_agents):
                 self.actor_optimizers[agent_idx].step()
 
-            # Update target networks
             self.update_network_parameters()
 
     def update_network_parameters(self, tau=None):
         if tau is None:
             tau = self.tau
 
-        # Critic 1
         for target_param, param in zip(self.target_critic_1.parameters(), self.critic_1.parameters()):
             target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
-        # Critic 2
         for target_param, param in zip(self.target_critic_2.parameters(), self.critic_2.parameters()):
             target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
 
-        # Actors
         for i in range(self.num_agents):
             for target_param, param in zip(self.target_actors[i].parameters(), self.actors[i].parameters()):
                 target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
