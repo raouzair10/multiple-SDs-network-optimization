@@ -2,6 +2,7 @@ import torch as T
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+from buffer import ReplayBuffer
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
@@ -38,34 +39,6 @@ class Critic(nn.Module):
         x = F.relu(self.fc2(x))
         q_value = self.q(x)
         return q_value
-
-class ReplayBuffer:
-    def __init__(self, max_size, input_dims, n_actions):
-        self.mem_size = max_size
-        self.mem_cntr = 0
-        self.state_memory = np.zeros((self.mem_size, input_dims), dtype=np.float32)
-        self.action_memory = np.zeros((self.mem_size, n_actions), dtype=np.float32)
-        self.reward_memory = np.zeros(self.mem_size, dtype=np.float32)
-        self.next_state_memory = np.zeros((self.mem_size, input_dims), dtype=np.float32)
-
-    def store_transition(self, state, action, reward, next_state):
-        index = self.mem_cntr % self.mem_size
-        self.state_memory[index] = state
-        self.action_memory[index] = action
-        self.reward_memory[index] = reward
-        self.next_state_memory[index] = next_state
-        self.mem_cntr += 1
-
-    def sample_buffer(self, batch_size):
-        max_mem = min(self.mem_cntr, self.mem_size)
-        batch = np.random.choice(max_mem, batch_size, replace=False)
-
-        states = self.state_memory[batch]
-        actions = self.action_memory[batch]
-        rewards = self.reward_memory[batch]
-        next_states = self.next_state_memory[batch]
-
-        return states, actions, rewards, next_states
 
 class MASAC:
     def __init__(self, lr_a, lr_c, global_input_dims, tau, gamma=0.99, n_actions=2, max_size=1000000, batch_size=100, num_agents=2):
