@@ -130,6 +130,8 @@ class Env_cellular():
         # Represents the actual energy harvested during the time allocated for energy harvesting
         EHD = (1 - alphan) * self.eta * self.T * self.Pn * hn0
 
+        #print(f"reward:{reward} - EE:{energy_efficiency} - energy consumed:{P0n}")
+
         return reward, state_next, EHD, energy_efficiency, data_rate
 
     def step_greedy(self, state, active_sd, j):
