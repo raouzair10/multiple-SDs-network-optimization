@@ -1,42 +1,67 @@
 import torch as T
+import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from networks import Actor, Critic
 from buffer import ReplayBuffer
 
-device = T.device("cuda" if T.cuda.is_available() else "cpu")
+device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
-class MADDPG():
-    def __init__(self, alpha, beta, input_dims, tau, gamma=0.99, n_actions=2, max_size=1000000, batch_size=100, num_agents=1):
+class Actor(nn.Module):
+    def __init__(self, s_dim, n_actions, fc1_dim=64, fc2_dim=64):
+        super(Actor, self).__init__()
+        self.fc1 = nn.Linear(s_dim, fc1_dim)
+        self.ln1 = nn.LayerNorm(fc1_dim)
+        self.fc2 = nn.Linear(fc1_dim, fc2_dim)
+        self.out = nn.Linear(fc2_dim, n_actions)
+
+    def forward(self, state):
+        x = F.relu(self.ln1(self.fc1(state)))
+        x = F.relu(self.fc2(x))
+        return T.tanh(self.out(x))  # Rescale if needed outside
+
+class Critic(nn.Module):
+    def __init__(self, input_dims, fc1_dim=128, fc2_dim=128):
+        super(Critic, self).__init__()
+        self.fc1 = nn.Linear(input_dims, fc1_dim)
+        self.fc2 = nn.Linear(fc1_dim, fc2_dim)
+        self.v = nn.Linear(fc2_dim, 1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        return self.v(x)
+
+class MADDPG:
+    def __init__(self, s_dim, a_dim, num_agents, lr_actor=1e-3, lr_critic=1e-3,
+                 gamma=0.99, tau=0.01, max_size=100000, batch_size=64):
         self.gamma = gamma
         self.tau = tau
         self.batch_size = batch_size
-        self.alpha = alpha
-        self.beta = beta
         self.num_agents = num_agents
-        self.n_actions = n_actions
+        self.a_dim = a_dim
+        self.memory = ReplayBuffer(max_size, s_dim, a_dim)
 
-        self.memory = ReplayBuffer(max_size, input_dims, n_actions)
+        self.actors = [Actor(s_dim=4, n_actions=1).to(device) for _ in range(num_agents)]
+        self.actors_target = [Actor(s_dim=4, n_actions=1).to(device) for _ in range(num_agents)]
+        self.actor_optimizers = [T.optim.Adam(actor.parameters(), lr=lr_actor) for actor in self.actors]
 
-        self.critic = Critic(s_dim=input_dims, a_dim=n_actions).to(device)
-        self.target_critic = Critic(s_dim=input_dims, a_dim=n_actions).to(device)
-        self.critic_optimizer = T.optim.Adam(self.critic.parameters(), lr=beta)
+        self.critic = Critic(s_dim + a_dim).to(device)
+        self.critic_target = Critic(s_dim + a_dim).to(device)
+        self.critic_optimizer = T.optim.Adam(self.critic.parameters(), lr=lr_critic)
 
-        self.actors = [Actor(s_dim=(input_dims // num_agents) + 1).to(device) for _ in range(num_agents)]
-        self.target_actors = [Actor(s_dim=(input_dims // num_agents) + 1).to(device) for _ in range(num_agents)]
-        self.actor_optimizers = [T.optim.Adam(actor.parameters(), lr=alpha) for actor in self.actors]
+        self.critic_target.load_state_dict(self.critic.state_dict())
+        for i in range(num_agents):
+            self.actors_target[i].load_state_dict(self.actors[i].state_dict())
 
-        self.update_network_parameters(tau=1)
+    def choose_action(self, local_state, agent_idx):
+        self.actors[agent_idx].eval()
+        state = T.FloatTensor(local_state).unsqueeze(0).to(device)
+        action = self.actors[agent_idx](state)
+        self.actors[agent_idx].train()
+        return ((action + 1) / 2).cpu().data.numpy().flatten()  # Scale to [0, 1]
 
-    def choose_action(self, s, agent_index):
-        self.actors[agent_index].eval()
-        s = T.FloatTensor(s.reshape(1, -1)).to(device)
-        a = self.actors[agent_index](s)
-        self.actors[agent_index].train()
-        return a.cpu().data.numpy().flatten()
-
-    def remember(self, state, action, reward, state_):
-        self.memory.store_transition(state, action, reward, state_)
+    def remember(self, state, action, reward, next_state):
+        self.memory.store_transition(state, action, reward, next_state)
 
     def learn(self):
         if self.memory.mem_cntr < self.batch_size:
@@ -44,86 +69,52 @@ class MADDPG():
 
         states, actions, rewards, next_states = self.memory.sample_buffer(self.batch_size)
 
-        states = T.tensor(states, dtype=T.float).to(device)
-        next_states = T.tensor(next_states, dtype=T.float).to(device)
-        rewards = T.tensor(rewards, dtype=T.float).to(device)
-        actions = T.tensor(actions, dtype=T.float).to(device)
+        states = T.tensor(states, dtype=T.float32).to(device)
+        next_states = T.tensor(next_states, dtype=T.float32).to(device)
+        actions = T.tensor(actions, dtype=T.float32).to(device)
+        rewards = T.tensor(rewards * 1000, dtype=T.float32).unsqueeze(1).to(device)
 
-        state_dim_per_agent = (states.shape[1] - 1) // self.num_agents
-        shared_feature_idx = -1
+        critic_input = T.cat([states, actions], dim=1)
+        critic_value = self.critic(critic_input).squeeze()
 
-        target_actions = []
-        for agent_idx in range(self.num_agents):
-            start = agent_idx * state_dim_per_agent
-            end = (agent_idx + 1) * state_dim_per_agent
+        # Get critic target
+        with T.no_grad():
+            next_actions = []
+            for i in range(self.num_agents):
+                local_next_state = self._get_local_state_batch(next_states, i)
+                next_action = self.actors_target[i](local_next_state)
+                next_action = (next_action + 1) / 2  # Rescale
+                next_actions.append(next_action.squeeze())
+            next_actions = T.stack(next_actions, dim=1)
+            next_input = T.cat([next_states, next_actions], dim=1)
+            critic_target = rewards.squeeze() + self.gamma * self.critic_target(next_input).squeeze()
 
-            local_state = next_states[:, start:end]
-            shared = next_states[:, shared_feature_idx].unsqueeze(1)
-            actor_input = T.cat((local_state, shared), dim=1)
-
-            ts_action = self.target_actors[agent_idx](actor_input)
-            target_actions.append(ts_action)
-
-        target_actions = T.cat(target_actions, dim=1)  
-
-        # ------------ Critic Update ------------
-
-        q_next = self.target_critic(next_states, target_actions).view(-1, 1)
-
-        rewards = rewards.unsqueeze(1)
-
-        # Total reward across agents (if needed)
-        q_targets = rewards + self.gamma * q_next 
-
-        q_eval = self.critic(states, actions).view(-1, 1)
-
-        critic_loss = F.mse_loss(q_eval, q_targets.detach())
+        critic_loss = F.mse_loss(critic_value, critic_target.detach())
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
-        # ------------ Actor Updates ------------
-
-        actor_losses = []
-        for agent_idx in range(self.num_agents):
-            start = agent_idx * state_dim_per_agent
-            end = (agent_idx + 1) * state_dim_per_agent
-
-            local_state = states[:, start:end] 
-            shared = states[:, shared_feature_idx].unsqueeze(1)
-            actor_input = T.cat((local_state, shared), dim=1) 
-
-            new_actions = self.actors[agent_idx](actor_input) 
-
-            joint_action = actions.clone() 
-            joint_action[:, agent_idx] = new_actions.squeeze(1) 
-
-            # Get the Q value from the critic for the joint action
-            actor_q = self.critic(states, joint_action).view(-1, 1)
-
-            actor_losses.append(-actor_q)
-
-        actor_loss = T.stack(actor_losses).mean()
-
-        for agent_idx in range(self.num_agents):
-            self.actor_optimizers[agent_idx].zero_grad()
-
-        actor_loss.backward()
-        for agent_idx in range(self.num_agents):
-            self.actor_optimizers[agent_idx].step()
-
-
-        self.update_network_parameters()
-
-    def update_network_parameters(self, tau=None):
-        if tau is None:
-            tau = self.tau
-
-        # Update critic
-        for target_param, param in zip(self.target_critic.parameters(), self.critic.parameters()):
-            target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
-
-        # Update each actor
         for i in range(self.num_agents):
-            for target_param, param in zip(self.target_actors[i].parameters(), self.actors[i].parameters()):
-                target_param.data.copy_(tau * param.data + (1 - tau) * target_param.data)
+            local_states = self._get_local_state_batch(states, i)
+            pred_action = self.actors[i](local_states)
+            pred_action = (pred_action + 1) / 2
+            new_actions = actions.clone()
+            new_actions[:, i] = pred_action.squeeze()
+            actor_input = T.cat([states, new_actions], dim=1)
+            actor_loss = -self.critic(actor_input).mean()
+
+            self.actor_optimizers[i].zero_grad()
+            actor_loss.backward()
+            self.actor_optimizers[i].step()
+
+            self._soft_update(self.actors[i], self.actors_target[i])
+
+        self._soft_update(self.critic, self.critic_target)
+
+    def _get_local_state_batch(self, states, agent_idx):
+        start = agent_idx * 3
+        return T.cat((states[:, start:start+3], states[:, -1:]), dim=1)
+
+    def _soft_update(self, net, target_net):
+        for target_param, param in zip(target_net.parameters(), net.parameters()):
+            target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)

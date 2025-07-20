@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
-from masac import MASAC
+from maddpg import MADDPG
 from env_simple import Env_cellular as env_simple
 from env_egc import Env_cellular as env_egc
 from env_sc import Env_cellular as env_sc
@@ -35,7 +35,7 @@ state_am = 1000
 torch.manual_seed(0)
 np.random.seed(0)
 
-# ------------------ Topology & Channel ------------------ #
+# ------------------ Diversity Combining Setup ------------------ #
 location_PDs = np.array([[0, 1], [0, 1000]])
 location_SDs = np.array([[1, 1], [1, 1000]])
 fading_SD_BS = np.ones(num_SDs)
@@ -44,7 +44,6 @@ hnx = np.array([[[0.90877, 0.80627], [0.82154, 0.96098]],
                 [[0.6277, 0.63398], [0.60789, 0.92472]]])
 fading_PD_SD = np.zeros((num_PDs, num_SDs))
 
-# ------------------ Select Diversity ------------------ #
 diversity_mode = int(input("Enter diversity technique (0: Simple, 1: EGC, 2: MRC, 3: SC): "))
 if diversity_mode == 1:
     for i in range(num_PDs):
@@ -67,22 +66,21 @@ else:
             fading_PD_SD[i][j] = np.random.choice(hnx[i][j])
     env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
-# ------------------ MASAC Agent ------------------ #
-masac_agent = MASAC(LR_A, LR_C, s_dim, TAU, GAMMA, a_dim, MEMORY_CAPACITY, BATCH_SIZE, num_SDs)
 
-# ------------------ Utility Function ------------------ #
+# ------------------ MADDPG Agent ------------------ #
+maddpg_agent = MADDPG(s_dim, a_dim, num_SDs, LR_A, LR_C, GAMMA, TAU, MEMORY_CAPACITY, BATCH_SIZE)
+
+# ------------------ Utility ------------------ #
 def choose_SD(state):
-    sd_qualities = []
+    scores = []
     for sd in range(num_SDs):
-        sd_state = state[0][sd * 3: (sd + 1) * 3]
-        norm = (sd_state - np.min(sd_state)) / (np.max(sd_state) - np.min(sd_state) + 1e-8)
-        quality = np.sum(norm)
-        sd_qualities.append(quality)
-    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(sd_qualities)
+        norm = state[0][sd * 3:(sd + 1) * 3]
+        scores.append(np.sum(norm / (np.max(norm) + 1e-8)))
+    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(scores)
 
-# ------------------ Training Loop ------------------ #
-dr_rewardall_masac = []
-ee_rewardall_masac = []
+# ------------------ Training ------------------ #
+dr_rewardall_maddpg = []
+ee_rewardall_maddpg = []
 var = 1.0
 
 for i in range(MAX_EPISODES):
@@ -92,34 +90,33 @@ for i in range(MAX_EPISODES):
         s.extend([env.hn_PD_SD[i % num_PDs, sd], env.hn_SD_BS[sd], battery[sd]])
     s.append(env.hn_PD_BS[i % num_PDs])
     s = np.reshape(s, (1, s_dim)) * state_am
-    s_masac = s.copy()
-    sr_masac = 0
-    masac_ee = 0
+    s_maddpg = s.copy()
+    sr, ee = 0, 0
 
     for j in range(MAX_EP_STEPS):
-        sd = choose_SD(s_masac)
-        s_local = np.append(s_masac[0][sd * 3:(sd + 1) * 3], s_masac[0][-1])
-        a = masac_agent.choose_action(s_local, sd)
+        sd = choose_SD(s_maddpg)
+        s_local = np.append(s_maddpg[0][sd * 3:(sd + 1) * 3], s_maddpg[0][-1])
+        a = maddpg_agent.choose_action(s_local, sd)
         a = np.clip(np.random.normal(a, var), 0, 1)[0]
         action_vec = np.zeros(a_dim, dtype=np.float32)
         action_vec[sd] = a
-        r, s_next, _, ee, sr = env.step(sd, a, s_masac / state_am, j+i)
-        s_next = s_next * state_am
-        masac_agent.remember(s_masac[0], action_vec, r, s_next[0])
-        masac_agent.learn()
-        s_masac = s_next
-        sr_masac += sr
-        masac_ee += ee
 
+        r, s_next, _, eep, srp = env.step(sd, a, s_maddpg / state_am, j+i)
+        s_next *= state_am
+        maddpg_agent.remember(s_maddpg[0], action_vec, r, s_next[0])
+        maddpg_agent.learn()
+        s_maddpg = s_next
+        sr += srp
+        ee += eep
         var = max(var * 0.9998, 0.1)
 
-    dr_rewardall_masac.append(sr_masac / MAX_EP_STEPS)
-    ee_rewardall_masac.append(masac_ee / MAX_EP_STEPS)
-    print(f"[Episode {i}] SR -> MASAC: {sr_masac/MAX_EP_STEPS:.4f} - EE -> MASAC: {masac_ee/MAX_EP_STEPS:.4f}")
+    dr_rewardall_maddpg.append(sr / MAX_EP_STEPS)
+    ee_rewardall_maddpg.append(ee / MAX_EP_STEPS)
+    print(f"[Episode {i}] SR -> MADDPG: {sr/MAX_EP_STEPS:.4f} - EE -> MADDPG: {ee/MAX_EP_STEPS:.4f}")
 
 # ------------------ Plot Results ------------------ #
 fig, ax = plt.subplots()
-ax.plot(dr_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='skyblue')
+ax.plot(dr_rewardall_maddpg, "d-", label='MADDPG', linewidth=0.75, color='red')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Sum Rate (b/s)")
 ax.margins(x=0)
@@ -129,12 +126,12 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 
-fig.savefig("masac_avg_sumrate.eps", format="eps", bbox_inches="tight")
-fig.savefig("masac_avg_sumrate.png", format="png", bbox_inches="tight")
+fig.savefig(f"maddpg_avg_sumrate_{diversity_mode}.eps", format="eps", bbox_inches="tight")
+fig.savefig(f"maddpg_avg_sumrate_{diversity_mode}.png", format="png", bbox_inches="tight")
 plt.show()
 
 fig, ax = plt.subplots()
-ax.plot(ee_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='blue')
+ax.plot(ee_rewardall_maddpg, "v-", label='MADDPG', linewidth=0.75, color='blue')
 ax.set_xlabel("Episodes")
 ax.set_ylabel("Average Energy Efficiency")
 ax.margins(x=0)
@@ -144,7 +141,6 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 
-fig.savefig("masac_avg_ee.eps", format="eps", bbox_inches="tight")
-fig.savefig("masac_avg_ee.png", format="png", bbox_inches="tight")
+fig.savefig(f"maddpg_avg_ee_{diversity_mode}.eps", format="eps", bbox_inches="tight")
+fig.savefig(f"maddpg_avg_ee_{diversity_mode}.png", format="png", bbox_inches="tight")
 plt.show()
-
