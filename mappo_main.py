@@ -1,3 +1,4 @@
+
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
@@ -7,7 +8,6 @@ from env_egc import Env_cellular as env_egc
 from env_sc import Env_cellular as env_sc
 from env_mrc import Env_cellular as env_mrc
 
-# === Hyperparameters ===
 Emax = 0.3
 num_PDs = 2
 num_SDs = 2
@@ -21,11 +21,7 @@ w_d = 1.5 * 1e-5
 w_egc = 1e-6
 w_mrc = 2e-6
 MAX_EPISODES = 200
-MAX_EP_STEPS = 300
-LR_A = 0.0002
-LR_C = 0.0004
-GAMMA = 0.99
-TAU = 0.01
+MAX_EP_STEPS = 200
 MEMORY_CAPACITY = 10000
 state_am = 1000
 
@@ -35,7 +31,6 @@ a_dim = num_SDs
 np.random.seed(0)
 torch.manual_seed(0)
 
-# === Diversity Setup ===
 location_PDs = np.array([[0, 1], [0, 1000]])
 location_SDs = np.array([[1, 1], [1, 1000]])
 fading_SD_BS = np.ones(num_SDs)
@@ -70,11 +65,8 @@ else:
     env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax,
                      w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
-# === Agent Init ===
-mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=4, global_state_dim=s_dim,
-                    action_dim_per_agent=1, buffer_size=MEMORY_CAPACITY)
+mappo_agent = MAPPO(num_SDs, 4, s_dim, 1)
 
-# === Helper: SD Selection ===
 def choose_SD(state):
     sd_qualities = []
     for sd in range(num_SDs):
@@ -84,7 +76,6 @@ def choose_SD(state):
         sd_qualities.append(quality)
     return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(sd_qualities)
 
-# === Training ===
 dr_rewardall = []
 ee_rewardall = []
 
@@ -106,7 +97,7 @@ for ep in range(MAX_EPISODES):
             local_state = np.append(s_mappo[0][agent_idx * 3:(agent_idx + 1) * 3], s_mappo[0][-1])
             a, logp = mappo_agent.select_action(local_state, agent_idx)
             actions[agent_idx] = np.clip(a[0], 0, 1)
-            logprobs[agent_idx] = logp[0]
+            logprobs[agent_idx] = logp
 
         sd = choose_SD(s_mappo)
         r, s_next, done, eep, srp = env.step(sd, actions[sd], s_mappo / state_am, step + ep)
@@ -123,7 +114,6 @@ for ep in range(MAX_EPISODES):
     ee_rewardall.append(ee / MAX_EP_STEPS)
     print(f"[Episode {ep}] SR -> MAPPO: {sr/MAX_EP_STEPS:.4f} - EE -> MAPPO: {ee/MAX_EP_STEPS:.4f}")
 
-# === Plotting ===
 fig, ax = plt.subplots()
 ax.plot(dr_rewardall, "d-", label='MAPPO', linewidth=0.75, color='blue')
 ax.set_xlabel("Episodes")
