@@ -6,6 +6,8 @@ from buffer import ReplayBuffer
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
+################################## Actor Network ##################################
+
 class Actor(nn.Module):
     def __init__(self, s_dim, n_actions, fc1_dim=64, fc2_dim=64):
         super(Actor, self).__init__()
@@ -17,7 +19,9 @@ class Actor(nn.Module):
     def forward(self, state):
         x = F.relu(self.ln1(self.fc1(state)))
         x = F.relu(self.fc2(x))
-        return T.tanh(self.out(x))  # Rescale if needed outside
+        return T.tanh(self.out(x))
+    
+################################## Centralized Critic Network ##################################
 
 class Critic(nn.Module):
     def __init__(self, input_dims, fc1_dim=128, fc2_dim=128):
@@ -31,6 +35,7 @@ class Critic(nn.Module):
         x = F.relu(self.fc2(x))
         return self.v(x)
 
+################################## MADDPG Agent ##################################
 class MADDPG:
     def __init__(self, s_dim, a_dim, num_agents, lr_actor=1e-3, lr_critic=1e-3,
                  gamma=0.99, tau=0.01, max_size=100000, batch_size=64):

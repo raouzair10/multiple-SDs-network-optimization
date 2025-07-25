@@ -6,6 +6,8 @@ from buffer import ReplayBuffer
 
 device = T.device('cuda' if T.cuda.is_available() else 'cpu')
 
+################################## Actor Network ##################################
+
 class Actor(nn.Module):
     def __init__(self, s_dim, n_actions, fc1_dim=64, fc2_dim=64):
         super(Actor, self).__init__()
@@ -22,6 +24,8 @@ class Actor(nn.Module):
         log_std = T.clamp(self.log_std(x), min=-20, max=2)
         return mean, log_std
 
+################################## Centralized Critic Network ##################################
+
 class Critic(nn.Module):
     def __init__(self, input_dims, fc1_dim=64, fc2_dim=64):
         super(Critic, self).__init__()
@@ -35,6 +39,7 @@ class Critic(nn.Module):
         x = F.relu(self.fc2(x))
         return self.q(x)
 
+################################## MASAC Agent ##################################
 class MASAC:
     def __init__(self, lr_a, lr_c, global_input_dims, tau, gamma=0.99,
                  n_actions=2, max_size=1000000, batch_size=100, num_agents=2,
