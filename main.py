@@ -36,8 +36,8 @@ w_mrc = 2 * (10 ** -6)
 ##################### Hyper Parameters #####################
 MAX_EPISODES = 300
 MAX_EP_STEPS = 300
-LR_A = 0.0002
-LR_C = 0.0004
+LR_A = 0.001
+LR_C = 0.005
 GAMMA = 0.9
 TAU = 0.01
 MEMORY_CAPACITY = 10000
@@ -147,39 +147,22 @@ def choose_SD(s):
     return best_sd_index, s_local
         
 #---------------------------------Initializing DDPG Agent--------------------------------------------------------------
-ddpg_agent = MADDPG(LR_A, LR_C, s_dim, TAU, GAMMA, n_actions=a_dim, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE, num_agents=num_SDs)
+
+maddpg_agent = MADDPG(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
+                 gamma=GAMMA, tau=TAU, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MATD3 Agent-----------------------------------------------------------------
-matd3_agent = MATD3(
-    alpha=LR_A,                # Learning rate for the actor
-    beta=LR_C,                 # Learning rate for the critic
-    input_dims=s_dim,                # The state dimension (s_dim)
-    tau=TAU,                   # Target network update parameter
-    gamma=GAMMA,               # Discount factor
-    n_actions=a_dim,                 # Number of actions
-    max_size=MEMORY_CAPACITY,  # Size of the experience replay buffer
-    batch_size=BATCH_SIZE,     # Batch size for learning
-    num_agents=num_SDs               # Total number of agents
-)
+matd3_agent = MATD3(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
+                    gamma=GAMMA, tau=TAU, max_size=5000, batch_size=BATCH_SIZE)
 #-----------------------------------------------------------------------------------------------------------------------
 
-#---------------------------------Initialize MAPPO POLICY-----------------------------------------------------------------
-mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=s_dim//num_SDs+1, global_state_dim=s_dim, action_dim_per_agent=1, lr_actor=LR_A, lr_critic=LR_C, gamma=GAMMA, K_epochs=4, eps_clip=0.2, buffer_size=1000, has_continuous_action_space=True, action_std_init=0.6)
+#---------------------------------Initialize MAPPO Agent----------------------------------------------------------------
+mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=4, global_state_dim=s_dim, action_dim=1)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MASAC Agent-----------------------------------------------------------------
-masac_agent = MASAC(
-    lr_a=LR_A,  # example value, you can adjust
-    lr_c=LR_C,   # example value, you can adjust
-    global_input_dims=s_dim,
-    tau=TAU,     # example value
-    gamma=GAMMA,
-    n_actions=a_dim,
-    max_size=MEMORY_CAPACITY,
-    batch_size=BATCH_SIZE,
-    num_agents=num_SDs
-)
+masac_agent = MASAC(lr_a=LR_A, lr_c=LR_C, global_input_dims=s_dim, tau=TAU, gamma=GAMMA, n_actions=a_dim, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE, num_agents=num_SDs)
 #-----------------------------------------------------------------------------------------------------------------------
 
 var = 1
@@ -270,7 +253,7 @@ for i in range(MAX_EPISODES):
     for j in range(MAX_EP_STEPS):
         ######################## MADDPG ########################
         sd_ddpg, s_local_ddpg = choose_SD(s_ddpg)
-        a_ddpg = ddpg_agent.choose_action(s_local_ddpg, sd_ddpg)
+        a_ddpg = maddpg_agent.choose_action(s_local_ddpg, sd_ddpg)
         a_ddpg = np.clip(np.random.normal(a_ddpg, var), 0, 1)[0]
 
         action_ddpg = np.zeros(2, dtype=np.float32)
@@ -278,7 +261,7 @@ for i in range(MAX_EPISODES):
 
         r_ddpg, s_ddpg_, EHD_maddpg, ee_ddpg, dr_ddpg = myenv.step(sd_ddpg, a_ddpg, s_ddpg / state_am, j+i)
         s_ddpg_ = s_ddpg_ * state_am
-        ddpg_agent.remember(s_ddpg[0], action_ddpg, r_ddpg, s_ddpg_[0])
+        maddpg_agent.remember(s_ddpg[0], action_ddpg, r_ddpg, s_ddpg_[0])
         ep_reward_ddpg += r_ddpg
         eh_reward_ddpg += EHD_maddpg
         ep_ee_ddpg += ee_ddpg
@@ -365,7 +348,7 @@ for i in range(MAX_EPISODES):
 
         if var > 0.1:
             var *= .9998
-        ddpg_agent.learn()
+        maddpg_agent.learn()
         matd3_agent.learn()
         masac_agent.learn()
         if mappo_agent.buffer.ptr == mappo_agent.buffer_size:
