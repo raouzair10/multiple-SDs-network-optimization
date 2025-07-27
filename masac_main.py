@@ -7,7 +7,7 @@ from env_egc import Env_cellular as env_egc
 from env_sc import Env_cellular as env_sc
 from env_mrc import Env_cellular as env_mrc
 
-# ------------------ Hyperparameters ------------------ #
+# === Hyperparameters ===
 Emax = 0.3
 num_PDs = 2
 num_SDs = 2
@@ -35,7 +35,7 @@ state_am = 1000
 torch.manual_seed(0)
 np.random.seed(0)
 
-# ------------------ Topology & Channel ------------------ #
+# === Topology and Channel ===
 location_PDs = np.array([[0, 1], [0, 1000]])
 location_SDs = np.array([[1, 1], [1, 1000]])
 fading_SD_BS = np.ones(num_SDs)
@@ -44,7 +44,7 @@ hnx = np.array([[[0.90877, 0.80627], [0.82154, 0.96098]],
                 [[0.6277, 0.63398], [0.60789, 0.92472]]])
 fading_PD_SD = np.zeros((num_PDs, num_SDs))
 
-# ------------------ Select Diversity ------------------ #
+# === Diversity Setup===
 diversity_mode = int(input("Enter diversity technique (0: Simple, 1: EGC, 2: MRC, 3: SC): "))
 if diversity_mode == 1:
     for i in range(num_PDs):
@@ -67,10 +67,10 @@ else:
             fading_PD_SD[i][j] = np.random.choice(hnx[i][j])
     env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
-# ------------------ MASAC Agent ------------------ #
+# === Agent Init ===
 masac_agent = MASAC(LR_A, LR_C, s_dim, TAU, GAMMA, a_dim, MEMORY_CAPACITY, BATCH_SIZE, num_SDs)
 
-# ------------------ Utility Function ------------------ #
+# === Choosing SD ===
 def choose_SD(state):
     sd_qualities = []
     for sd in range(num_SDs):
@@ -80,7 +80,7 @@ def choose_SD(state):
         sd_qualities.append(quality)
     return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(sd_qualities)
 
-# ------------------ Training Loop ------------------ #
+# === Training ===
 dr_rewardall_masac = []
 ee_rewardall_masac = []
 var = 1.0
@@ -117,7 +117,7 @@ for i in range(MAX_EPISODES):
     ee_rewardall_masac.append(masac_ee / MAX_EP_STEPS)
     print(f"[Episode {i}] SR -> MASAC: {sr_masac/MAX_EP_STEPS:.4f} - EE -> MASAC: {masac_ee/MAX_EP_STEPS:.4f}")
 
-# ------------------ Plot Results ------------------ #
+# === Plotting ===
 fig, ax = plt.subplots()
 ax.plot(dr_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='skyblue')
 ax.set_xlabel("Episodes")
