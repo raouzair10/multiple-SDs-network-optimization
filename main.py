@@ -94,19 +94,19 @@ if diversity_mode == 1: # EGC
     for i in range(num_PDs):
         for j in range(num_SDs):
             fading_PD_SD[i][j] = np.sum(hnx[i][j]) ** 2 # square of sum
-    myenv = env_egc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, L, T, eta, Pn, Pmax, w_d, w_egc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    env = env_egc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, L, T, eta, Pn, Pmax, w_d, w_egc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 elif diversity_mode == 2:   # MRC
     for i in range(num_PDs):
         for j in range(num_SDs):
             fading_PD_SD[i][j] = np.sum(hnx[i][j] ** 2) # sum of squares
-    myenv = env_mrc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_d, w_mrc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    env = env_mrc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_d, w_mrc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 elif diversity_mode == 3:   # SC
     for i in range(num_PDs):
         for j in range(num_SDs):
             fading_PD_SD[i][j] = np.max(hnx[i][j] ** 2) # max squared value
-    myenv = env_sc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_d, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    env = env_sc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_d, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 
 else:   # simple (no diversity) 
@@ -117,7 +117,7 @@ else:   # simple (no diversity)
             #  [0.63398 0.60789]]
             # [[PD1-SD1 PD1-SD2]
             #  [PD2-SD1 PD2SD2]]
-    myenv = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 def choose_SD(s):
     sd_qualities = []
@@ -165,375 +165,128 @@ mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=4, global_state_dim=s_di
 masac_agent = MASAC(lr_a=LR_A, lr_c=LR_C, global_input_dims=s_dim, tau=TAU, gamma=GAMMA, n_actions=a_dim, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE, num_agents=num_SDs)
 #-----------------------------------------------------------------------------------------------------------------------
 
-var = 1
-total_time = 1
+# ========== Training ========== #
+dr_rewardall_maddpg, ee_rewardall_maddpg = [], []
+dr_rewardall_mappo, ee_rewardall_mappo = [], []
+dr_rewardall_td3, ee_rewardall_td3 = [], []
+dr_rewardall_masac, ee_rewardall_masac = [], []
 
-ep_rewardall_ddpg = []
-ep_rewardall_matd3 = []
-ep_rewardall_mappo = []
-ep_rewardall_masac = []
-ep_rewardall_greedy = []
-ep_rewardall_random = []
+var = 1.0
 
-eh_rewardall_ddpg = []
-eh_rewardall_matd3 = []
-eh_rewardall_mappo = [] 
-eh_rewardall_masac = [] 
-eh_rewardall_greedy = []
-eh_rewardall_random = []
-
-ee_rewardall_ddpg = []
-ee_rewardall_matd3 = []
-ee_rewardall_mappo = []
-ee_rewardall_masac = [] 
-ee_rewardall_greedy = []
-ee_rewardall_random = []
-
-dr_rewardall_ddpg = []
-dr_rewardall_matd3 = []
-dr_rewardall_mappo = []
-dr_rewardall_masac = [] 
-dr_rewardall_greedy = []
-dr_rewardall_random = []
-
-sd1_freq = []
-sd2_freq = []
-
-for i in range(MAX_EPISODES):
-    batter_ini = myenv.reset()
+for ep in range(MAX_EPISODES):
+    battery = env.reset()
     s = []
     for sd in range(num_SDs):
-        s.append(myenv.hn_PD_SD[i % myenv.num_PDs, sd])
-        s.append(myenv.hn_SD_BS[sd])
-        s.append(batter_ini[sd])
-    s.append(myenv.hn_PD_BS[i % myenv.num_PDs])
-    s = np.reshape(s, (1, s_dim))   
-    # [[7.10046823e-13 1.80299692e-06 3.00000000e-01 1.24827307e-12 9.44854682e-07 3.00000000e-01 7.36531872e-13]]
-    # [[hn-SD1-PDi hn-SD1-BS battery-SD1 hn-SD2-PDi hn-SD2-BS battery-SD2 hn-PDi-BS]]
-    s = s * state_am
+        s.extend([env.hn_PD_SD[ep % num_PDs, sd], env.hn_SD_BS[sd], battery[sd]])
+    s.append(env.hn_PD_BS[ep % num_PDs])
+    s = np.reshape(s, (1, s_dim)) * state_am
 
-    s_ddpg = s
-    s_matd3 = s
-    s_mappo = s
-    s_masac = s
-    s_greedy = s
-    s_random = s
+    s_maddpg = s.copy()
+    s_mappo = s.copy()
+    s_td3 = s.copy()
+    s_masac = s.copy()
 
-    ep_ee_ddpg = 0
-    ep_ee_matd3 = 0
-    ep_ee_mappo = 0
-    ep_ee_masac = 0
-    ep_ee_random = 0
-    ep_ee_greedy = 0
+    sr_maddpg = sr_mappo = sr_td3 = sr_masac = 0
+    ee_maddpg = ee_mappo = ee_td3 = ee_masac = 0
 
-    ep_dr_ddpg = 0
-    ep_dr_matd3 = 0
-    ep_dr_mappo = 0
-    ep_dr_masac = 0
-    ep_dr_random = 0
-    ep_dr_greedy = 0
-
-    ep_reward_ddpg = 0
-    ep_reward_matd3 = 0
-    ep_reward_mappo = 0
-    ep_reward_masac = 0
-    ep_reward_random = 0
-    ep_reward_greedy = 0
-
-    eh_reward_ddpg = 0
-    eh_reward_matd3 = 0
-    eh_reward_mappo = 0
-    eh_reward_masac = 0
-    eh_reward_random = 0
-    eh_reward_greedy = 0
-
-    sd1_count = 0
-    sd2_count = 0
-
-    for j in range(MAX_EP_STEPS):
-        ######################## MADDPG ########################
-        sd_ddpg, s_local_ddpg = choose_SD(s_ddpg)
-        a_ddpg = maddpg_agent.choose_action(s_local_ddpg, sd_ddpg)
-        a_ddpg = np.clip(np.random.normal(a_ddpg, var), 0, 1)[0]
-
-        action_ddpg = np.zeros(2, dtype=np.float32)
-        action_ddpg[sd_ddpg] = a_ddpg
-
-        r_ddpg, s_ddpg_, EHD_maddpg, ee_ddpg, dr_ddpg = myenv.step(sd_ddpg, a_ddpg, s_ddpg / state_am, j+i)
-        s_ddpg_ = s_ddpg_ * state_am
-        maddpg_agent.remember(s_ddpg[0], action_ddpg, r_ddpg, s_ddpg_[0])
-        ep_reward_ddpg += r_ddpg
-        eh_reward_ddpg += EHD_maddpg
-        ep_ee_ddpg += ee_ddpg
-        ep_dr_ddpg += dr_ddpg
-
-        ######################## MATD3 ########################
-        sd_matd3, s_local_matd3 = choose_SD(s_matd3)
-        if sd_matd3 == 0:
-            sd1_count += 1
-        else:
-            sd2_count += 1 
-        a_matd3 = matd3_agent.choose_action(s_local_matd3, sd_matd3)  # Choose action using MATD3 agent
-        a_matd3 = np.clip(np.random.normal(a_matd3, var), 0, 1)[0]
-
-        action_matd3 = np.zeros(2, dtype=np.float32)
-        action_matd3[sd_matd3] = a_matd3
-
-        r_matd3, s_matd3_, EHD_matd3, ee_matd3, dr_matd3 = myenv.step(sd_matd3, a_matd3, s_matd3 / state_am, j+i)
-        s_matd3_ = s_matd3_ * state_am
-        matd3_agent.remember(s_matd3[0], action_matd3, r_matd3, s_matd3_[0])  # Store experience in MATD3 buffer
-        ep_reward_matd3 += r_matd3
-        eh_reward_matd3 += EHD_matd3
-        ep_ee_matd3 += ee_matd3
-        ep_dr_matd3 += dr_matd3
-
-        ######################## MAPPO ########################
-        sd_mappo, s_local_mappo = choose_SD(s_mappo)
-
-        # Get action (tsv) from the active agent's actor
-        a_mappo, logprob = mappo_agent.select_action(s_local_mappo, sd_mappo)
-        a_mappo = np.clip(np.random.normal(a_mappo, var), 0, 1)[0]
-
-        # Create the 2D action vector [tsv1, tsv2]
-        action_mappo = np.zeros(2, dtype=np.float32)
-        action_mappo[sd_mappo] = a_mappo
-
-        r_mappo, s_mappo_, EHD_mappo, ee_mappo, dr_mappo = myenv.step(sd_mappo, a_mappo, s_mappo / state_am, j+i)
-        s_mappo_ = s_mappo_ * state_am
-
-        # Store the transition
-        mappo_agent.store_transition(s_mappo, action_mappo, logprob, r_mappo, (j == MAX_EP_STEPS-1), sd_mappo) # Assuming episode doesn't end here
-
-        ep_reward_mappo += r_mappo
-        eh_reward_mappo += EHD_mappo
-        ep_ee_mappo += ee_mappo
-        ep_dr_mappo += dr_mappo
-        s_mappo = s_mappo_
-
-        ######################## MASAC ########################
-        sd_masac, s_local_masac = choose_SD(s_masac)
-        a_masac = masac_agent.choose_action(s_local_masac, sd_masac)
-        a_masac = np.clip(np.random.normal(a_masac, var), 0, 1)[0]
-
-        action_masac = np.zeros(2, dtype=np.float32)
-        action_masac[sd_masac] = a_masac
-
-        r_masac, s_masac_, EHD_masac, ee_masac, dr_masac = myenv.step(sd_masac, a_masac, s_masac / state_am, j+i)
-        s_masac_ = s_masac_ * state_am
-
-        masac_agent.remember(s_masac[0], action_masac, r_masac, s_masac_[0])
-
-        ep_reward_masac += r_masac
-        eh_reward_masac += EHD_masac
-        ep_ee_masac += ee_masac
-        ep_dr_masac += dr_masac
-
-        ######################## Greedy ########################
-        sd_greedy, _ = choose_SD(s_greedy)
-        r_greedy, s_next_greedy, EHG, ee_greedy, dr_greedy = myenv.step_greedy(s_greedy / state_am, sd_greedy, j+i)
-        s_greedy = s_next_greedy * state_am
-        ep_reward_greedy += r_greedy
-        eh_reward_greedy += EHG
-        ep_ee_greedy += ee_greedy
-        ep_dr_greedy += dr_greedy
-
-        ######################## Random ########################
-        sd_random, _ = choose_SD(s_random)
-        r_random, s_next_random, EHR, ee_random, dr_random = myenv.step_random(s_random / state_am,sd_random, j+i)
-        s_random = s_next_random * state_am
-        ep_reward_random += r_random
-        eh_reward_random += EHR
-        ep_ee_random += ee_random
-        ep_dr_random += dr_random
-
-        if var > 0.1:
-            var *= .9998
+    for step in range(MAX_EP_STEPS):
+        # --- MADDPG ---
+        sd = np.random.randint(num_SDs)
+        s_local = np.append(s_maddpg[0][sd * 3:(sd + 1) * 3], s_maddpg[0][-1])
+        a = maddpg_agent.choose_action(s_local, sd)
+        a = np.clip(np.random.normal(a, var), 0, 1)[0]
+        action_vec = np.zeros(a_dim, dtype=np.float32)
+        action_vec[sd] = a
+        r, s_next, _, eep, srp = env.step(sd, a, s_maddpg / state_am, step + ep)
+        s_next *= state_am
+        maddpg_agent.remember(s_maddpg[0], action_vec, r, s_next[0])
         maddpg_agent.learn()
+        s_maddpg = s_next
+        sr_maddpg += srp
+        ee_maddpg += eep
+
+        # --- MAPPO ---
+        actions = np.zeros(a_dim)
+        logprobs = np.zeros(a_dim)
+        for agent_idx in range(num_SDs):
+            local_state = np.append(s_mappo[0][agent_idx * 3:(agent_idx + 1) * 3], s_mappo[0][-1])
+            a, logp = mappo_agent.select_action(local_state, agent_idx)
+            actions[agent_idx] = np.clip(a[0], 0, 1)
+            logprobs[agent_idx] = logp
+        sd = np.random.randint(num_SDs)
+        r, s_next, done, eep, srp = env.step(sd, actions[sd], s_mappo / state_am, step + ep)
+        s_next *= state_am
+        mappo_agent.store_transition(s_mappo.flatten(), actions.copy(), logprobs[sd], r, done, sd)
+        mappo_agent.update()
+        s_mappo = s_next
+        sr_mappo += srp
+        ee_mappo += eep
+
+        # --- MATD3 ---
+        actions = np.zeros(a_dim)
+        for agent_idx in range(num_SDs):
+            s_local = np.append(s_td3[0][agent_idx * 3:(agent_idx + 1) * 3], s_td3[0][-1])
+            a = matd3_agent.choose_action(s_local, agent_idx, explore=True)
+            actions[agent_idx] = np.clip(a[0], 0, 1)
+        sd = np.random.randint(num_SDs)
+        r, s_next, _, eep, srp = env.step(sd, actions[sd], s_td3 / state_am, step + ep)
+        s_next *= state_am
+        matd3_agent.remember(s_td3.flatten(), actions.copy(), r, s_next.flatten())
         matd3_agent.learn()
+        s_td3 = s_next
+        sr_td3 += srp
+        ee_td3 += eep
+
+        # --- MASAC ---
+        sd = np.random.randint(num_SDs)
+        s_local = np.append(s_masac[0][sd * 3:(sd + 1) * 3], s_masac[0][-1])
+        a = masac_agent.choose_action(s_local, sd)
+        a = np.clip(np.random.normal(a, var), 0, 1)[0]
+        action_vec = np.zeros(a_dim, dtype=np.float32)
+        action_vec[sd] = a
+        r, s_next, _, eep, srp = env.step(sd, a, s_masac / state_am, step + ep)
+        s_next *= state_am
+        masac_agent.remember(s_masac[0], action_vec, r, s_next[0])
         masac_agent.learn()
-        if mappo_agent.buffer.ptr == mappo_agent.buffer_size:
-            mappo_agent.update()
-            mappo_agent.buffer.clear()
-        s_ddpg = s_ddpg_
-        s_matd3 = s_matd3_
-        s_mappo = s_mappo_
-        s_masac = s_masac_
-        total_time += 1
+        s_masac = s_next
+        sr_masac += srp
+        ee_masac += eep
 
-        if j == MAX_EP_STEPS - 1:
-            print('Avg EE for Episode:', i,
-                'MADDPG: %i' % int(ep_ee_ddpg / MAX_EP_STEPS),
-                'MATD3: %i' % int(ep_ee_matd3 / MAX_EP_STEPS),
-                'MAPPO: %i' % int(ep_ee_mappo / MAX_EP_STEPS),
-                'MASAC: %i' % int(ep_ee_masac / MAX_EP_STEPS),
-                'Greedy: %i' % int(ep_ee_greedy / MAX_EP_STEPS),
-                'Random: %i' % int(ep_ee_random / MAX_EP_STEPS))
-            
-            print('Average SR for Episode:', i,
-                'MADDPG: %i' % int(ep_dr_ddpg / MAX_EP_STEPS),
-                'MATD3: %i' % int(ep_dr_matd3 / MAX_EP_STEPS),
-                'MAPPO: %i' % int(ep_dr_mappo / MAX_EP_STEPS),
-                'MASAC: %i' % int(ep_dr_masac / MAX_EP_STEPS),
-                'Greedy: %i' % int(ep_dr_greedy / MAX_EP_STEPS),
-                'Random: %i' % int(ep_dr_random / MAX_EP_STEPS))
-            
-            print()
-            
-    ep_reward_ddpg = np.reshape(ep_reward_ddpg / MAX_EP_STEPS, (1,))
-    ep_rewardall_ddpg.append(ep_reward_ddpg)
-    eh_reward_ddpg = np.reshape(eh_reward_ddpg / MAX_EP_STEPS, (1,))
-    eh_rewardall_ddpg.append(eh_reward_ddpg)
-    ep_ee_ddpg = np.reshape(ep_ee_ddpg / MAX_EP_STEPS, (1,))
-    ee_rewardall_ddpg.append(ep_ee_ddpg)
-    ep_dr_ddpg = np.reshape(ep_dr_ddpg / MAX_EP_STEPS, (1,))
-    dr_rewardall_ddpg.append(ep_dr_ddpg)
+    var = max(var * 0.9998, 0.1)
 
-    ep_reward_matd3 = np.reshape(ep_reward_matd3 / MAX_EP_STEPS, (1,))
-    ep_rewardall_matd3.append(ep_reward_matd3)
-    eh_reward_matd3 = np.reshape(eh_reward_matd3 / MAX_EP_STEPS, (1,))
-    eh_rewardall_matd3.append(eh_reward_matd3)
-    ep_ee_matd3 = np.reshape(ep_ee_matd3 / MAX_EP_STEPS, (1,))
-    ee_rewardall_matd3.append(ep_ee_matd3)
-    ep_dr_matd3 = np.reshape(ep_dr_matd3 / MAX_EP_STEPS, (1,))
-    dr_rewardall_matd3.append(ep_dr_matd3)
+    dr_rewardall_maddpg.append(sr_maddpg / MAX_EP_STEPS)
+    ee_rewardall_maddpg.append(ee_maddpg / MAX_EP_STEPS)
+    dr_rewardall_mappo.append(sr_mappo / MAX_EP_STEPS)
+    ee_rewardall_mappo.append(ee_mappo / MAX_EP_STEPS)
+    dr_rewardall_td3.append(sr_td3 / MAX_EP_STEPS)
+    ee_rewardall_td3.append(ee_td3 / MAX_EP_STEPS)
+    dr_rewardall_masac.append(sr_masac / MAX_EP_STEPS)
+    ee_rewardall_masac.append(ee_masac / MAX_EP_STEPS)
 
-    ep_reward_masac = np.reshape(ep_reward_masac / MAX_EP_STEPS, (1,))
-    ep_rewardall_masac.append(ep_reward_masac)
-    eh_reward_masac = np.reshape(eh_reward_masac / MAX_EP_STEPS, (1,))
-    eh_rewardall_masac.append(eh_reward_masac)
-    ep_ee_masac = np.reshape(ep_ee_masac / MAX_EP_STEPS, (1,))
-    ee_rewardall_masac.append(ep_ee_masac)
-    ep_dr_masac = np.reshape(ep_dr_masac / MAX_EP_STEPS, (1,))
-    dr_rewardall_masac.append(ep_dr_masac)
+    print(f"[Episode {ep}] SR -> MADDPG: {sr_maddpg/MAX_EP_STEPS:.4f}, MAPPO: {sr_mappo/MAX_EP_STEPS:.4f}, MATD3: {sr_td3/MAX_EP_STEPS:.4f}, MASAC: {sr_masac/MAX_EP_STEPS:.4f}")
 
-    ep_reward_mappo = np.reshape(ep_reward_mappo / MAX_EP_STEPS, (1,))
-    ep_rewardall_mappo.append(ep_reward_mappo)
-    eh_reward_mappo = np.reshape(eh_reward_mappo / MAX_EP_STEPS, (1,))
-    eh_rewardall_mappo.append(eh_reward_mappo)
-    ep_ee_mappo = np.reshape(ep_ee_mappo / MAX_EP_STEPS, (1,))
-    ee_rewardall_mappo.append(ep_ee_mappo)
-    ep_dr_mappo = np.reshape(ep_dr_mappo / MAX_EP_STEPS, (1,))
-    dr_rewardall_mappo.append(ep_dr_mappo)
-    sd1_freq.append(sd1_count)
-    sd2_freq.append(sd2_count)
+# ========== Plotting ========== #
+def plot_results(rewards_dict, ylabel, filename):
+    plt.figure()
+    for label, rewards in rewards_dict.items():
+        plt.plot(rewards, label=label)
+    plt.xlabel("Episodes")
+    plt.ylabel(ylabel)
+    plt.legend()
+    plt.grid(True)
+    plt.savefig(filename)
+    plt.close()
 
-    
-    ep_reward_greedy = np.reshape(ep_reward_greedy/MAX_EP_STEPS, (1,))
-    ep_rewardall_greedy.append(ep_reward_greedy)
-    eh_reward_greedy = np.reshape(eh_reward_greedy / MAX_EP_STEPS, (1,))
-    eh_rewardall_greedy.append(eh_reward_greedy)
-    ep_ee_greedy = np.reshape(ep_ee_greedy/MAX_EP_STEPS, (1,))
-    ee_rewardall_greedy.append(ep_ee_greedy)
-    ep_dr_greedy = np.reshape(ep_dr_greedy/MAX_EP_STEPS, (1,))
-    dr_rewardall_greedy.append(ep_dr_greedy)
+plot_results({
+    'MADDPG': dr_rewardall_maddpg,
+    'MAPPO': dr_rewardall_mappo,
+    'MATD3': dr_rewardall_td3,
+    'MASAC': dr_rewardall_masac
+}, "Average Sum Rate (b/s)", "avg_sumrate_all.png")
 
-    ep_reward_random = np.reshape(ep_reward_random/MAX_EP_STEPS, (1,))
-    ep_rewardall_random.append(ep_reward_random)
-    eh_reward_random = np.reshape(eh_reward_random / MAX_EP_STEPS, (1,))
-    eh_rewardall_random.append(eh_reward_random)
-    ep_ee_random = np.reshape(ep_ee_random/MAX_EP_STEPS, (1,))
-    ee_rewardall_random.append(ep_ee_random)
-    ep_dr_random = np.reshape(ep_dr_random/MAX_EP_STEPS, (1,))
-    dr_rewardall_random.append(ep_dr_random)
-
-# ########### PLOTTING FIGURES ###############
-print(f'sd1: {sd1_freq}')
-print(f'sd2: {sd2_freq}')
-
-# Plot for energy harvested
-fig1, ax = plt.subplots()
-ax.plot(eh_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
-ax.plot(eh_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(eh_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='skyblue')
-ax.plot(eh_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
-ax.plot(eh_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
-ax.plot(eh_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
-ax.set_xlabel("Episodes")
-ax.set_ylabel("Energy Harvested (J)")
-ax.margins(x=0)
-ax.set_xlim(0, MAX_EPISODES)
-ax.set_yscale('log')
-ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-ax.minorticks_on()
-ax.tick_params(which="minor", bottom=False, left=False)
-
-# Make the legend draggable
-legend1 = ax.legend(facecolor='none')
-legend1.set_draggable(True)
-
-fig1.savefig('EH.eps', format='eps', bbox_inches='tight')
-fig1.savefig('EH.png', format='png', bbox_inches='tight')
-
-plt.show()
-
-# Plot for avg EE
-fig2, ax = plt.subplots()
-ax.plot(ee_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
-ax.plot(ee_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(ee_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='skyblue')
-ax.plot(ee_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
-ax.plot(ee_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color= 'orange')
-ax.plot(ee_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
-ax.set_xlabel("Episodes")
-ax.set_ylabel("Average Energy Efficiency (b/J)")
-ax.margins(x=0)
-ax.set_xlim(0, MAX_EPISODES)
-ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-ax.minorticks_on()
-ax.tick_params(which="minor", bottom=False, left=False)
-
-legend2 = ax.legend(facecolor='none')
-legend2.set_draggable(True)
-
-# Save figures with different formats
-fig2.savefig('EE.eps', format='eps', bbox_inches='tight')
-fig2.savefig('EE.png', format='png', bbox_inches='tight')
-
-plt.show()
-
-# Plot for avg sum rate
-fig3, ax = plt.subplots()
-ax.plot(dr_rewardall_ddpg, "^-", label='MADDPG', linewidth=0.75 , color= 'darkblue')
-ax.plot(dr_rewardall_matd3, "s-", label='MATD3', linewidth=0.75, color='green')
-ax.plot(dr_rewardall_masac, "s-", label='MASAC', linewidth=0.75, color='skyblue')
-ax.plot(dr_rewardall_mappo, "d-", label='MAPPO', linewidth=0.75, color='red')
-ax.plot(dr_rewardall_greedy, "o-", label='Greedy', linewidth=0.75, color='orange')
-ax.plot(dr_rewardall_random, "x-", label='Random', linewidth=0.75, color='black')
-ax.set_xlabel("Episodes")
-ax.set_ylabel("Average Sum Rate (b/s)")
-ax.margins(x=0)
-ax.set_xlim(0, MAX_EPISODES)
-ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-ax.minorticks_on()
-ax.tick_params(which="minor", bottom=False, left=False)
-
-# Make the legend draggable
-legend3 = ax.legend(facecolor='none')
-legend3.set_draggable(True)
-
-fig3.savefig('SR.eps', format='eps', bbox_inches='tight')
-fig3.savefig('SR.png', format='png', bbox_inches='tight')
-
-plt.show()
-
-# Plot for device selection frequency
-fig4, ax = plt.subplots()
-ax.plot(sd1_freq, "^-", label='SD1', linewidth=0.75 , color= 'red')
-ax.plot(sd2_freq, "v-", label='SD2', linewidth=0.75, color='darkblue')
-ax.set_xlabel("Episodes")
-ax.set_ylabel("Device Selection Frequency")
-ax.margins(x=0)
-ax.set_xlim(0, MAX_EPISODES)
-ax.set_ylim(0, MAX_EP_STEPS)
-ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
-ax.minorticks_on()
-ax.tick_params(which="minor", bottom=False, left=False)
-
-# Make the legend draggable
-legend4 = ax.legend(facecolor='none')
-legend4.set_draggable(True)
-
-fig4.savefig('DSF.eps', format='eps', bbox_inches='tight')
-fig4.savefig('DSF.png', format='png', bbox_inches='tight')
-
-plt.show()
+plot_results({
+    'MADDPG': ee_rewardall_maddpg,
+    'MAPPO': ee_rewardall_mappo,
+    'MATD3': ee_rewardall_td3,
+    'MASAC': ee_rewardall_masac
+}, "Average Energy Efficiency", "avg_ee_all.png")
