@@ -144,7 +144,7 @@ def choose_SD(s):
     s_l = s[0][best_sd_index * (s.shape[1] // num_SDs): (best_sd_index + 1) * (s.shape[1] // num_SDs)]
     s_local = np.append(s_l, s[0][-1])  # [[hn-SDj-PDi hn-SDj-BS battery-SDj hn-PDi-BS]]
 
-    return best_sd_index, s_local
+    return best_sd_index
         
 #---------------------------------Initializing DDPG Agent--------------------------------------------------------------
 
@@ -191,7 +191,7 @@ for ep in range(MAX_EPISODES):
 
     for step in range(MAX_EP_STEPS):
         # --- MADDPG ---
-        sd = np.random.randint(num_SDs)
+        sd = choose_SD(s_maddpg)
         s_local = np.append(s_maddpg[0][sd * 3:(sd + 1) * 3], s_maddpg[0][-1])
         a = maddpg_agent.choose_action(s_local, sd)
         a = np.clip(np.random.normal(a, var), 0, 1)[0]
@@ -213,7 +213,7 @@ for ep in range(MAX_EPISODES):
             a, logp = mappo_agent.select_action(local_state, agent_idx)
             actions[agent_idx] = np.clip(a[0], 0, 1)
             logprobs[agent_idx] = logp
-        sd = np.random.randint(num_SDs)
+        sd = choose_SD(s_mappo)
         r, s_next, done, eep, srp = env.step(sd, actions[sd], s_mappo / state_am, step + ep)
         s_next *= state_am
         mappo_agent.store_transition(s_mappo.flatten(), actions.copy(), logprobs[sd], r, done, sd)
@@ -228,7 +228,7 @@ for ep in range(MAX_EPISODES):
             s_local = np.append(s_td3[0][agent_idx * 3:(agent_idx + 1) * 3], s_td3[0][-1])
             a = matd3_agent.choose_action(s_local, agent_idx, explore=True)
             actions[agent_idx] = np.clip(a[0], 0, 1)
-        sd = np.random.randint(num_SDs)
+        sd = choose_SD(s_td3)
         r, s_next, _, eep, srp = env.step(sd, actions[sd], s_td3 / state_am, step + ep)
         s_next *= state_am
         matd3_agent.remember(s_td3.flatten(), actions.copy(), r, s_next.flatten())
@@ -238,7 +238,7 @@ for ep in range(MAX_EPISODES):
         ee_td3 += eep
 
         # --- MASAC ---
-        sd = np.random.randint(num_SDs)
+        sd = choose_SD(s_masac)
         s_local = np.append(s_masac[0][sd * 3:(sd + 1) * 3], s_masac[0][-1])
         a = masac_agent.choose_action(s_local, sd)
         a = np.clip(np.random.normal(a, var), 0, 1)[0]
