@@ -1,5 +1,7 @@
 import numpy as np
+import torch
 
+################################## Replay Buffer ##################################
 class ReplayBuffer():
     def __init__(self, max_size, input_shape, n_actions):
         self.mem_size = max_size
@@ -29,6 +31,53 @@ class ReplayBuffer():
         states_ = self.new_state_memory[batch]
 
         return states, actions, rewards, states_
+    
+################################## Rollout Buffer ##################################
+class RolloutBuffer:
+    """
+    Buffer to store trajectories during policy rollouts.
+    Used to collect and batch experiences for learning.
+    """
+    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2):
+        self.num_agents = num_agents
+        self.buffer_size = buffer_size
+        self.clear()
+
+    def store(self, global_state, action, logprob, reward, is_terminal, agent_index):
+        """
+        Store one step of experience into the buffer.
+        """
+        self.global_states.append(global_state)
+        self.actions.append(action)
+        self.logprobs.append(logprob)
+        self.rewards.append(reward)
+        self.is_terminals.append(is_terminal)
+        self.agent_indices.append(agent_index)
+
+    def sample(self):
+        """
+        Convert lists to PyTorch tensors and move to device.
+        Returns batched tensors for training.
+        """
+        return (
+            torch.tensor(np.array(self.global_states), dtype=torch.float32).to(torch.device),
+            torch.tensor(np.array(self.actions), dtype=torch.float32).to(torch.device),
+            torch.tensor(np.array(self.logprobs), dtype=torch.float32).to(torch.device),
+            torch.tensor(np.array(self.rewards), dtype=torch.float32).to(torch.device),
+            torch.tensor(np.array(self.is_terminals), dtype=torch.bool).to(torch.device),
+            torch.tensor(np.array(self.agent_indices), dtype=torch.long).to(torch.device)
+        )
+
+    def clear(self):
+        """
+        Reset the buffer for the next round of data collection.
+        """
+        self.global_states = []
+        self.actions = []
+        self.logprobs = []
+        self.rewards = []
+        self.is_terminals = []
+        self.agent_indices = []
 
 class MATD3ReplayBuffer:
     def __init__(self, max_size, state_dim, action_dim):

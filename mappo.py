@@ -3,57 +3,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import MultivariateNormal
 import numpy as np
+from buffer import RolloutBuffer
 
 # Use GPU if available, otherwise fallback to CPU
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f"Device set to: {device}")
-
-################################## Rollout Buffer ##################################
-class RolloutBuffer:
-    """
-    Buffer to store trajectories during policy rollouts.
-    Used to collect and batch experiences for learning.
-    """
-    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2):
-        self.num_agents = num_agents
-        self.buffer_size = buffer_size
-        self.clear()
-
-    def store(self, global_state, action, logprob, reward, is_terminal, agent_index):
-        """
-        Store one step of experience into the buffer.
-        """
-        self.global_states.append(global_state)
-        self.actions.append(action)
-        self.logprobs.append(logprob)
-        self.rewards.append(reward)
-        self.is_terminals.append(is_terminal)
-        self.agent_indices.append(agent_index)
-
-    def sample(self):
-        """
-        Convert lists to PyTorch tensors and move to device.
-        Returns batched tensors for training.
-        """
-        return (
-            torch.tensor(np.array(self.global_states), dtype=torch.float32).to(device),
-            torch.tensor(np.array(self.actions), dtype=torch.float32).to(device),
-            torch.tensor(np.array(self.logprobs), dtype=torch.float32).to(device),
-            torch.tensor(np.array(self.rewards), dtype=torch.float32).to(device),
-            torch.tensor(np.array(self.is_terminals), dtype=torch.bool).to(device),
-            torch.tensor(np.array(self.agent_indices), dtype=torch.long).to(device)
-        )
-
-    def clear(self):
-        """
-        Reset the buffer for the next round of data collection.
-        """
-        self.global_states = []
-        self.actions = []
-        self.logprobs = []
-        self.rewards = []
-        self.is_terminals = []
-        self.agent_indices = []
 
 ################################## Actor Network ##################################
 class Actor(nn.Module):
