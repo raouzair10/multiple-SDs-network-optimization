@@ -38,9 +38,10 @@ class RolloutBuffer:
     Buffer to store trajectories during policy rollouts.
     Used to collect and batch experiences for learning.
     """
-    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2):
+    def __init__(self, num_agents, buffer_size, global_state_dim, action_dim=2, device=None):
         self.num_agents = num_agents
         self.buffer_size = buffer_size
+        self.device = device
         self.clear()
 
     def store(self, global_state, action, logprob, reward, is_terminal, agent_index):
@@ -60,12 +61,12 @@ class RolloutBuffer:
         Returns batched tensors for training.
         """
         return (
-            torch.tensor(np.array(self.global_states), dtype=torch.float32).to(torch.device),
-            torch.tensor(np.array(self.actions), dtype=torch.float32).to(torch.device),
-            torch.tensor(np.array(self.logprobs), dtype=torch.float32).to(torch.device),
-            torch.tensor(np.array(self.rewards), dtype=torch.float32).to(torch.device),
-            torch.tensor(np.array(self.is_terminals), dtype=torch.bool).to(torch.device),
-            torch.tensor(np.array(self.agent_indices), dtype=torch.long).to(torch.device)
+            torch.tensor(np.array(self.global_states), dtype=torch.float32).to(self.device),
+            torch.tensor(np.array(self.actions), dtype=torch.float32).to(self.device),
+            torch.tensor(np.array(self.logprobs), dtype=torch.float32).to(self.device),
+            torch.tensor(np.array(self.rewards), dtype=torch.float32).to(self.device),
+            torch.tensor(np.array(self.is_terminals), dtype=torch.bool).to(self.device),
+            torch.tensor(np.array(self.agent_indices), dtype=torch.long).to(self.device)
         )
 
     def clear(self):

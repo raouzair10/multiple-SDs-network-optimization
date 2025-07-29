@@ -129,8 +129,8 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 
-fig.savefig("masac_avg_sumrate.eps", format="eps", bbox_inches="tight")
-fig.savefig("masac_avg_sumrate.png", format="png", bbox_inches="tight")
+fig.savefig(f"masac_avg_sumrate_{diversity_mode}.eps", format="eps", bbox_inches="tight")
+fig.savefig(f"masac_avg_sumrate_{diversity_mode}.png", format="png", bbox_inches="tight")
 plt.show()
 
 fig, ax = plt.subplots()
@@ -144,7 +144,7 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 
-fig.savefig("masac_avg_ee.eps", format="eps", bbox_inches="tight")
-fig.savefig("masac_avg_ee.png", format="png", bbox_inches="tight")
+fig.savefig(f"masac_avg_ee_{diversity_mode}.eps", format="eps", bbox_inches="tight")
+fig.savefig(f"masac_avg_ee_{diversity_mode}.png", format="png", bbox_inches="tight")
 plt.show()
 

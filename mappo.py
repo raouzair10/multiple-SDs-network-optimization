@@ -65,7 +65,7 @@ class MAPPO:
         self.K_epochs = 5  # PPO optimization steps
 
         # Shared buffer for all agents
-        self.buffer = RolloutBuffer(num_agents, buffer_size=10000, global_state_dim=global_state_dim, action_dim=action_dim * num_agents)
+        self.buffer = RolloutBuffer(num_agents, buffer_size=10000, global_state_dim=global_state_dim, action_dim=action_dim * num_agents, device=device)
 
         # Initialize actor networks for each agent
         self.actors = nn.ModuleList([
