@@ -22,7 +22,7 @@ w_d = 1.5 * 1e-5
 w_egc = 1e-6
 w_mrc = 2e-6
 MAX_EPISODES = 200
-MAX_EP_STEPS = 200
+MAX_EP_STEPS = 300
 MEMORY_CAPACITY = 10000
 state_am = 1000
 
@@ -119,7 +119,11 @@ for ep in range(MAX_EPISODES):
     dr_rewardall.append(sr / MAX_EP_STEPS)
     ee_rewardall.append(ee / MAX_EP_STEPS)
     print(f"[Episode {ep}] SR -> MAPPO: {sr/MAX_EP_STEPS:.4f} - EE -> MAPPO: {ee/MAX_EP_STEPS:.4f}")
-
+print("mappo")
+print(f"SUMRATE-> {dr_rewardall}")
+print("----------------------------------")
+print(f"EE-> {ee_rewardall}")
+print("----------------------------------")
 # === Plotting ===
 fig, ax = plt.subplots()
 ax.plot(dr_rewardall, "d-", label='MAPPO', linewidth=0.75, color='blue')

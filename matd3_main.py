@@ -120,7 +120,11 @@ for ep in range(MAX_EPISODES):
     dr_rewardall_td3.append(sr / MAX_EP_STEPS)
     ee_rewardall_td3.append(ee / MAX_EP_STEPS)
     print(f"[Episode {ep}] SR -> MATD3: {sr/MAX_EP_STEPS:.4f} - EE -> MATD3: {ee/MAX_EP_STEPS:.4f}")
-
+print("matd3")
+print(f"SUMRATE-> {dr_rewardall_td3}")
+print("----------------------------------")
+print(f"EE-> {ee_rewardall_td3}")
+print("----------------------------------")
 # === Plotting ===
 fig, ax = plt.subplots()
 ax.plot(dr_rewardall_td3, "d-", label='MATD3', linewidth=0.75, color='green')

@@ -14,7 +14,7 @@ class Actor(nn.Module):
     """
     Policy network for each agent — maps state to action.
     """
-    def __init__(self, state_dim, action_dim, action_std_init=0.6):
+    def __init__(self, state_dim, action_dim, action_std_init= 0.13607419721597983):
         super().__init__()
         self.actor = nn.Sequential(
             nn.Linear(state_dim, 64),
@@ -57,15 +57,15 @@ class MAPPO:
     Multi-Agent Proximal Policy Optimization (MAPPO) implementation.
     Each agent has its own actor network, but all share a centralized critic.
     """
-    def __init__(self, num_agents, local_state_dim, global_state_dim, action_dim, action_std_init=0.6):
+    def __init__(self, num_agents, local_state_dim, global_state_dim, action_dim, action_std_init=0.13607419721597983):
         self.num_agents = num_agents
         self.action_dim = action_dim
-        self.gamma = 0.99  # Discount factor
-        self.eps_clip = 0.2  # PPO clipping parameter
-        self.K_epochs = 5  # PPO optimization steps
+        self.gamma = 0.9420441431009607  # Discount factor
+        self.eps_clip = 0.28627778732014286  # PPO clipping parameter
+        self.K_epochs = 6  # PPO optimization steps
 
         # Shared buffer for all agents
-        self.buffer = RolloutBuffer(num_agents, buffer_size=10000, global_state_dim=global_state_dim, action_dim=action_dim * num_agents, device=device)
+        self.buffer = RolloutBuffer(num_agents, buffer_size=5000, global_state_dim=global_state_dim, action_dim=action_dim * num_agents, device=device)
 
         # Initialize actor networks for each agent
         self.actors = nn.ModuleList([
@@ -87,8 +87,8 @@ class MAPPO:
         self.critic_old.load_state_dict(self.critic.state_dict())
 
         # Optimizers
-        self.actor_optimizers = [torch.optim.Adam(actor.parameters(), lr=0.002) for actor in self.actors]
-        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=0.002)
+        self.actor_optimizers = [torch.optim.Adam(actor.parameters(), lr=0.0015970862692206234) for actor in self.actors]
+        self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=0.0021797408070158217)
 
         self.mse_loss = nn.MSELoss()
         self.action_std = action_std_init  # For exploration decay
