@@ -34,8 +34,8 @@ w_egc = 1 * (10 ** -6)
 w_mrc = 2 * (10 ** -6)
 
 ##################### Hyper Parameters #####################
-MAX_EPISODES = 300
-MAX_EP_STEPS = 300
+MAX_EPISODES = 200
+MAX_EP_STEPS = 200
 LR_A = 0.001
 LR_C = 0.005
 GAMMA = 0.9
