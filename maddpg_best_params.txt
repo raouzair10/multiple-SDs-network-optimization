@@ -1,0 +1,8 @@
+Best sum rate: 6.226990927981554
+Best parameters:
+lr_actor: 0.0001892743991686467
+lr_critic: 0.003178430756432114
+gamma: 0.9400000000000001
+tau: 0.00477758577637705
+batch_size: 128
+memory_capacity: 16000

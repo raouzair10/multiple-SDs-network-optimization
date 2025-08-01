@@ -1,0 +1,9 @@
+Best sum rate: 6.1331934838814
+Best parameters:
+gamma: 0.92
+eps_clip: 0.5
+K_epochs: 3
+lr_actor: 0.006468776041288534
+lr_critic: 0.005462588876142524
+action_std_init: 0.2
+buffer_size: 2000
