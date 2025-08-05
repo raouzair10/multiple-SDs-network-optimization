@@ -22,7 +22,7 @@ w_d = 1.5 * 1e-5
 w_egc = 1e-6
 w_mrc = 2e-6
 MAX_EPISODES = 200
-MAX_EP_STEPS = 300
+MAX_EP_STEPS = 200
 MEMORY_CAPACITY = 10000
 state_am = 1000
 
@@ -69,7 +69,10 @@ else:
                      w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 # === Agent Init ===
-mappo_agent = MAPPO(num_SDs, 4, s_dim, 1)
+# Best parameters from tuning results
+mappo_agent = MAPPO(num_SDs, 4, s_dim, 1, 
+                     action_std_init=0.25, gamma=0.91, eps_clip=0.3, K_epochs=10,
+                     buffer_size=2000, lr_actor=0.0001, lr_critic=0.005)
 
 # === Helper: SD Selection ===
 def choose_SD(state):

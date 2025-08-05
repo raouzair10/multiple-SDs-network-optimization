@@ -16,11 +16,11 @@ eta = 0.7
 Pn = 1
 Pmax = 0.2
 w_csk = 0.000001
-w_d = 1.5e-5
+w_d = 1.5 * 1e-5
 w_egc = 1e-6
 w_mrc = 2e-6
 MAX_EPISODES = 200
-MAX_EP_STEPS = 300
+MAX_EP_STEPS = 200
 s_dim = (3 * num_SDs) + 1
 state_am = 1000
 
@@ -127,13 +127,32 @@ print("----------------------------------")
 print(f"EE-> {ee_rewardall_greedy}")
 print("----------------------------------")
 # === PLOTTING ===
-plt.figure(figsize=(10, 4))
-plt.plot(ee_rewardall_greedy, label='Greedy EE', color='orange')
-plt.plot(ee_rewardall_random, label='Random EE', color='black')
-plt.xlabel("Episodes")
-plt.ylabel("Average Energy Efficiency (b/J)")
-plt.legend()
-plt.grid(True)
-plt.title("Greedy vs Random - Energy Efficiency")
-plt.savefig("EE_greedy_random.png")
+# Sum Rate Plot
+fig, ax = plt.subplots()
+ax.plot(dr_rewardall_greedy, "d-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(dr_rewardall_random, "d-", label='Random', linewidth=0.75, color='black')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Average Sum Rate (b/s)")
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+ax.legend(facecolor='none').set_draggable(True)
+fig.savefig(f"random_greedy_avg_sumrate_{diversity_mode}.png", bbox_inches="tight")
+plt.show()
+
+# Energy Efficiency Plot
+fig, ax = plt.subplots()
+ax.plot(ee_rewardall_greedy, "v-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(ee_rewardall_random, "v-", label='Random', linewidth=0.75, color='black')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Average Energy Efficiency")
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+ax.legend(facecolor='none').set_draggable(True)
+fig.savefig(f"random_greedy_avg_ee_{diversity_mode}.png", bbox_inches="tight")
 plt.show()

@@ -7,3 +7,7 @@ lr_actor: 0.006468776041288534
 lr_critic: 0.005462588876142524
 action_std_init: 0.2
 buffer_size: 2000
+
+
+for simple and sc:
+Parameters: {'gamma': 0.91, 'eps_clip': 0.30000000000000004, 'K_epochs': 10, 'lr_actor': 0.00010075891669140503, 'lr_critic': 0.004961448279919533, 'action_std_init': 0.25, 'buffer_size': 2000}

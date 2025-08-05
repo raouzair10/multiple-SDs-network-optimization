@@ -36,12 +36,52 @@ w_mrc = 2 * (10 ** -6)
 ##################### Hyper Parameters #####################
 MAX_EPISODES = 200
 MAX_EP_STEPS = 200
+
+# Best parameters from tuning results
+# MADDPG best params
+MADDPG_LR_A = 0.0001892743991686467
+MADDPG_LR_C = 0.003178430756432114
+MADDPG_GAMMA = 0.9400000000000001
+MADDPG_TAU = 0.00477758577637705
+MADDPG_BATCH_SIZE = 128
+MADDPG_MEMORY_CAPACITY = 16000
+
+# MAPPO best params
+MAPPO_GAMMA = 0.92
+MAPPO_EPS_CLIP = 0.5
+MAPPO_K_EPOCHS = 3
+MAPPO_LR_ACTOR = 0.006468776041288534
+MAPPO_LR_CRITIC = 0.005462588876142524
+MAPPO_ACTION_STD_INIT = 0.2
+MAPPO_BUFFER_SIZE = 2000
+
+# MASAC best params
+MASAC_LR_A = 0.008887665084684753
+MASAC_LR_C = 0.0022838084135613315
+MASAC_TAU = 0.01284504520150508
+MASAC_GAMMA = 0.8600000000000001
+MASAC_BATCH_SIZE = 96
+MASAC_MEMORY_CAPACITY = 5000
+
+# MATD3 best params
+MATD3_LR_ACTOR = 0.00013575014643156606
+MATD3_LR_CRITIC = 0.008801517965274138
+MATD3_GAMMA = 0.8500000000000001
+MATD3_TAU = 0.035603917735483624
+MATD3_BATCH_SIZE = 128
+MATD3_POLICY_NOISE = 0.1
+MATD3_NOISE_CLIP = 0.5
+MATD3_POLICY_DELAY = 5
+MATD3_MEMORY_CAPACITY = 13000
+
+# Legacy parameters (keeping for compatibility)
 LR_A = 0.001
 LR_C = 0.005
 GAMMA = 0.9
 TAU = 0.01
 MEMORY_CAPACITY = 10000
 BATCH_SIZE = 32
+
 s_dim = (3 * num_SDs) + 1 # Calculate state dimension
 a_dim = 2 # Calculate action dimension
 a_bound = 1
@@ -148,21 +188,24 @@ def choose_SD(s):
         
 #---------------------------------Initializing DDPG Agent--------------------------------------------------------------
 
-maddpg_agent = MADDPG(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
-                 gamma=GAMMA, tau=TAU, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE)
+maddpg_agent = MADDPG(s_dim, a_dim, num_SDs, lr_actor=MADDPG_LR_A, lr_critic=MADDPG_LR_C,
+                 gamma=MADDPG_GAMMA, tau=MADDPG_TAU, max_size=MADDPG_MEMORY_CAPACITY, batch_size=MADDPG_BATCH_SIZE)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MATD3 Agent-----------------------------------------------------------------
-matd3_agent = MATD3(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
-                    gamma=GAMMA, tau=TAU, max_size=5000, batch_size=BATCH_SIZE)
+matd3_agent = MATD3(s_dim, a_dim, num_SDs, lr_actor=MATD3_LR_ACTOR, lr_critic=MATD3_LR_CRITIC,
+                    gamma=MATD3_GAMMA, tau=MATD3_TAU, max_size=MATD3_MEMORY_CAPACITY, batch_size=MATD3_BATCH_SIZE,
+                    policy_noise=MATD3_POLICY_NOISE, noise_clip=MATD3_NOISE_CLIP, policy_delay=MATD3_POLICY_DELAY)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MAPPO Agent----------------------------------------------------------------
-mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=4, global_state_dim=s_dim, action_dim=1)
+mappo_agent = MAPPO(num_agents=num_SDs, local_state_dim=4, global_state_dim=s_dim, action_dim=1,
+                     action_std_init=MAPPO_ACTION_STD_INIT, gamma=MAPPO_GAMMA, eps_clip=MAPPO_EPS_CLIP,
+                     K_epochs=MAPPO_K_EPOCHS, buffer_size=MAPPO_BUFFER_SIZE, lr_actor=MAPPO_LR_ACTOR, lr_critic=MAPPO_LR_CRITIC)
 #-----------------------------------------------------------------------------------------------------------------------
 
 #---------------------------------Initialize MASAC Agent-----------------------------------------------------------------
-masac_agent = MASAC(lr_a=LR_A, lr_c=LR_C, global_input_dims=s_dim, tau=TAU, gamma=GAMMA, n_actions=a_dim, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE, num_agents=num_SDs)
+masac_agent = MASAC(lr_a=MASAC_LR_A, lr_c=MASAC_LR_C, global_input_dims=s_dim, tau=MASAC_TAU, gamma=MASAC_GAMMA, n_actions=a_dim, max_size=MASAC_MEMORY_CAPACITY, batch_size=MASAC_BATCH_SIZE, num_agents=num_SDs)
 #-----------------------------------------------------------------------------------------------------------------------
 
 # ========== Training ========== #

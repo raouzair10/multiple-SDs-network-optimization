@@ -21,17 +21,19 @@ w_d = 1.5 * 1e-5
 w_egc = 1e-6
 w_mrc = 2e-6
 MAX_EPISODES = 200
-MAX_EP_STEPS = 300
-LR_A = 0.001
-LR_C = 0.005
-GAMMA = 0.9
-TAU = 0.01
-MEMORY_CAPACITY = 5000
-BATCH_SIZE = 32
-state_am = 1000
+MAX_EP_STEPS = 200
+
+# Best parameters from tuning results
+LR_A = 0.00013575014643156606
+LR_C = 0.008801517965274138
+GAMMA = 0.8500000000000001
+TAU = 0.035603917735483624
+MEMORY_CAPACITY = 13000
+BATCH_SIZE = 128
 
 s_dim = (3 * num_SDs) + 1
 a_dim = num_SDs
+state_am = 1000
 
 np.random.seed(0)
 torch.manual_seed(0)
@@ -72,8 +74,10 @@ else:
                      w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
 # === Agent Init ===
+# Best parameters from tuning results
 matd3_agent = MATD3(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
-                    gamma=GAMMA, tau=TAU, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE)
+                    gamma=GAMMA, tau=TAU, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE,
+                    policy_noise=0.1, noise_clip=0.5, policy_delay=5)
 
 # === Helper: SD Selection ===
 def choose_SD(state):
