@@ -71,8 +71,8 @@ else:
 # === Agent Init ===
 # Best parameters from tuning results
 mappo_agent = MAPPO(num_SDs, 4, s_dim, 1, 
-                     action_std_init=0.25, gamma=0.91, eps_clip=0.3, K_epochs=10,
-                     buffer_size=2000, lr_actor=0.0001, lr_critic=0.005)
+                     action_std_init=0.2, gamma=0.92, eps_clip=0.5, K_epochs=3,
+                     buffer_size=2000, lr_actor=0.006468776041288534, lr_critic=0.005462588876142524)
 
 # === Helper: SD Selection ===
 def choose_SD(state):
@@ -86,6 +86,11 @@ def choose_SD(state):
 
 dr_rewardall = []
 ee_rewardall = []
+eh_rewardall = []
+
+# Lists to store SD selection frequencies for each episode
+sd0_selections = []
+sd1_selections = []
 
 # === Training ===
 for ep in range(MAX_EPISODES):
@@ -96,7 +101,11 @@ for ep in range(MAX_EPISODES):
     s.append(env.hn_PD_BS[ep % num_PDs])
     s = np.reshape(s, (1, s_dim)) * state_am
     s_mappo = s.copy()
-    sr, ee = 0, 0
+    sr, ee, eh = 0, 0, 0
+    
+    # Counters for this episode
+    sd0_count = 0
+    sd1_count = 0
 
     for step in range(MAX_EP_STEPS):
         actions = np.zeros(a_dim)
@@ -109,23 +118,44 @@ for ep in range(MAX_EPISODES):
             logprobs[agent_idx] = logp
 
         sd = choose_SD(s_mappo)
-        r, s_next, done, eep, srp = env.step(sd, actions[sd], s_mappo / state_am, step + ep)
+        
+        # Count SD selections
+        if sd == 0:
+            sd0_count += 1
+        elif sd == 1:
+            sd1_count += 1
+            
+        r, s_next, ehp, eep, srp = env.step(sd, actions[sd], s_mappo / state_am, step + ep)
         s_next *= state_am
 
-        mappo_agent.store_transition(s_mappo.flatten(), actions.copy(), logprobs[sd], r, done, sd)
+        mappo_agent.store_transition(s_mappo.flatten(), actions.copy(), logprobs[sd], r, False, sd)
         mappo_agent.update()
 
         s_mappo = s_next
         sr += srp
         ee += eep
+        eh += ehp
 
+    # Store the counts for this episode
+    sd0_selections.append(sd0_count)
+    sd1_selections.append(sd1_count)
+    
     dr_rewardall.append(sr / MAX_EP_STEPS)
     ee_rewardall.append(ee / MAX_EP_STEPS)
-    print(f"[Episode {ep}] SR -> MAPPO: {sr/MAX_EP_STEPS:.4f} - EE -> MAPPO: {ee/MAX_EP_STEPS:.4f}")
+    eh_rewardall.append(eh)
+    print(f"[Episode {ep}] SR -> MAPPO: {sr/MAX_EP_STEPS:.4f} - EE -> MAPPO: {ee/MAX_EP_STEPS:.4f} - EH -> MAPPO: {eh:.4f}")
 print("mappo")
 print(f"SUMRATE-> {dr_rewardall}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall}")
+print("----------------------------------")
+print(f"EH-> {eh_rewardall}")
+print("----------------------------------")
+
+# Print SD selection frequencies
+print("SD Selection Frequencies:")
+print(f"SD 0 selections per episode: {sd0_selections}")
+print(f"SD 1 selections per episode: {sd1_selections}")
 print("----------------------------------")
 # === Plotting ===
 fig, ax = plt.subplots()

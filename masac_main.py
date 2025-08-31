@@ -86,6 +86,12 @@ def choose_SD(state):
 # === Training ===
 dr_rewardall_masac = []
 ee_rewardall_masac = []
+eh_rewardall_masac = []
+
+# Lists to store SD selection frequencies for each episode
+sd0_selections = []
+sd1_selections = []
+
 var = 1.0
 
 for i in range(MAX_EPISODES):
@@ -98,33 +104,60 @@ for i in range(MAX_EPISODES):
     s_masac = s.copy()
     sr_masac = 0
     masac_ee = 0
+    masac_eh = 0
+    
+    # Counters for this episode
+    sd0_count = 0
+    sd1_count = 0
 
     for j in range(MAX_EP_STEPS):
         sd = choose_SD(s_masac)
+        
+        # Count SD selections
+        if sd == 0:
+            sd0_count += 1
+        elif sd == 1:
+            sd1_count += 1
+            
         s_local = np.append(s_masac[0][sd * 3:(sd + 1) * 3], s_masac[0][-1])
         a = masac_agent.choose_action(s_local, sd)
         a = np.clip(np.random.normal(a, var), 0, 1)[0]
         action_vec = np.zeros(a_dim, dtype=np.float32)
         action_vec[sd] = a
-        r, s_next, _, ee, sr = env.step(sd, a, s_masac / state_am, j+i)
+        r, s_next, ehp, ee, sr = env.step(sd, a, s_masac / state_am, j+i)
         s_next = s_next * state_am
         masac_agent.remember(s_masac[0], action_vec, r, s_next[0])
         masac_agent.learn()
         s_masac = s_next
         sr_masac += sr
         masac_ee += ee
+        masac_eh += ehp
 
         var = max(var * 0.9998, 0.1)
 
+    # Store the counts for this episode
+    sd0_selections.append(sd0_count)
+    sd1_selections.append(sd1_count)
+    
     dr_rewardall_masac.append(sr_masac / MAX_EP_STEPS)
     ee_rewardall_masac.append(masac_ee / MAX_EP_STEPS)
-    print(f"[Episode {i}] SR -> MASAC: {sr_masac/MAX_EP_STEPS:.4f} - EE -> MASAC: {masac_ee/MAX_EP_STEPS:.4f}")
+    eh_rewardall_masac.append(masac_eh)
+    print(f"[Episode {i}] SR -> MASAC: {sr_masac/MAX_EP_STEPS:.4f} - EE -> MASAC: {masac_ee/MAX_EP_STEPS:.4f} - EH -> MASAC: {masac_eh:.4f}")
 
 print("masac")
 print(f"SUMRATE-> {dr_rewardall_masac}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall_masac}")
 print("----------------------------------")
+print(f"EH-> {eh_rewardall_masac}")
+print("----------------------------------")
+
+# Print SD selection frequencies
+print("SD Selection Frequencies:")
+print(f"SD 0 selections per episode: {sd0_selections}")
+print(f"SD 1 selections per episode: {sd1_selections}")
+print("----------------------------------")
+
 # === Plotting ===
 fig, ax = plt.subplots()
 ax.plot(dr_rewardall_masac, "v-", label='MASAC', linewidth=0.75, color='skyblue')

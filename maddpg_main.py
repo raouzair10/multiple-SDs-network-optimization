@@ -84,6 +84,12 @@ def choose_SD(state):
 # === Training ===
 dr_rewardall_maddpg = []
 ee_rewardall_maddpg = []
+eh_rewardall_maddpg = []
+
+# Lists to store SD selection frequencies for each episode
+sd0_selections = []
+sd1_selections = []
+
 var = 1.0
 
 for i in range(MAX_EPISODES):
@@ -94,32 +100,57 @@ for i in range(MAX_EPISODES):
     s.append(env.hn_PD_BS[i % num_PDs])
     s = np.reshape(s, (1, s_dim)) * state_am
     s_maddpg = s.copy()
-    sr, ee = 0, 0
+    sr, ee, eh = 0, 0, 0
+    
+    # Counters for this episode
+    sd0_count = 0
+    sd1_count = 0
 
     for j in range(MAX_EP_STEPS):
         sd = choose_SD(s_maddpg)
+        
+        # Count SD selections
+        if sd == 0:
+            sd0_count += 1
+        elif sd == 1:
+            sd1_count += 1
+            
         s_local = np.append(s_maddpg[0][sd * 3:(sd + 1) * 3], s_maddpg[0][-1])
         a = maddpg_agent.choose_action(s_local, sd)
         a = np.clip(np.random.normal(a, var), 0, 1)[0]
         action_vec = np.zeros(a_dim, dtype=np.float32)
         action_vec[sd] = a
 
-        r, s_next, _, eep, srp = env.step(sd, a, s_maddpg / state_am, j+i)
+        r, s_next, ehp, eep, srp = env.step(sd, a, s_maddpg / state_am, j+i)
         s_next *= state_am
         maddpg_agent.remember(s_maddpg[0], action_vec, r, s_next[0])
         maddpg_agent.learn()
         s_maddpg = s_next
         sr += srp
         ee += eep
+        eh += ehp
         var = max(var * 0.9998, 0.1)
 
+    # Store the counts for this episode
+    sd0_selections.append(sd0_count)
+    sd1_selections.append(sd1_count)
+    
     dr_rewardall_maddpg.append(sr / MAX_EP_STEPS)
     ee_rewardall_maddpg.append(ee / MAX_EP_STEPS)
-    print(f"[Episode {i}] SR -> MADDPG: {sr/MAX_EP_STEPS:.4f} - EE -> MADDPG: {ee/MAX_EP_STEPS:.4f}")
+    eh_rewardall_maddpg.append(eh)
+    print(f"[Episode {i}] SR -> MADDPG: {sr/MAX_EP_STEPS:.4f} - EE -> MADDPG: {ee/MAX_EP_STEPS:.4f} - EH -> MADDPG: {eh:.4f}")
 print("maddpg")
 print(f"SUMRATE-> {dr_rewardall_maddpg}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall_maddpg}")
+print("----------------------------------")
+print(f"EH-> {eh_rewardall_maddpg}")
+print("----------------------------------")
+
+# Print SD selection frequencies
+print("SD Selection Frequencies:")
+print(f"SD 0 selections per episode: {sd0_selections}")
+print(f"SD 1 selections per episode: {sd1_selections}")
 print("----------------------------------")
 # === Plotting ===
 fig, ax = plt.subplots()

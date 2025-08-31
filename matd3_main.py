@@ -92,6 +92,11 @@ def choose_SD(state):
 # === Training ===
 dr_rewardall_td3 = []
 ee_rewardall_td3 = []
+eh_rewardall_td3 = []
+
+# Lists to store SD selection frequencies for each episode
+sd0_selections = []
+sd1_selections = []
 
 for ep in range(MAX_EPISODES):
     battery = env.reset()
@@ -101,7 +106,11 @@ for ep in range(MAX_EPISODES):
     s.append(env.hn_PD_BS[ep % num_PDs])
     s = np.reshape(s, (1, s_dim)) * state_am
     s_td3 = s.copy()
-    sr, ee = 0, 0
+    sr, ee, eh = 0, 0, 0
+    
+    # Counters for this episode
+    sd0_count = 0
+    sd1_count = 0
 
     for step in range(MAX_EP_STEPS):
         actions = np.zeros(a_dim)
@@ -111,7 +120,14 @@ for ep in range(MAX_EPISODES):
             actions[agent_idx] = np.clip(a[0], 0, 1)
 
         sd = choose_SD(s_td3)
-        r, s_next, _, eep, srp = env.step(sd, actions[sd], s_td3 / state_am, step + ep)
+        
+        # Count SD selections
+        if sd == 0:
+            sd0_count += 1
+        elif sd == 1:
+            sd1_count += 1
+            
+        r, s_next, ehp, eep, srp = env.step(sd, actions[sd], s_td3 / state_am, step + ep)
         s_next *= state_am
 
         matd3_agent.remember(s_td3.flatten(), actions.copy(), r, s_next.flatten())
@@ -120,14 +136,28 @@ for ep in range(MAX_EPISODES):
         s_td3 = s_next
         sr += srp
         ee += eep
+        eh += ehp
 
+    # Store the counts for this episode
+    sd0_selections.append(sd0_count)
+    sd1_selections.append(sd1_count)
+    
     dr_rewardall_td3.append(sr / MAX_EP_STEPS)
     ee_rewardall_td3.append(ee / MAX_EP_STEPS)
-    print(f"[Episode {ep}] SR -> MATD3: {sr/MAX_EP_STEPS:.4f} - EE -> MATD3: {ee/MAX_EP_STEPS:.4f}")
+    eh_rewardall_td3.append(eh)
+    print(f"[Episode {ep}] SR -> MATD3: {sr/MAX_EP_STEPS:.4f} - EE -> MATD3: {ee/MAX_EP_STEPS:.4f} - EH -> MATD3: {eh:.4f}")
 print("matd3")
 print(f"SUMRATE-> {dr_rewardall_td3}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall_td3}")
+print("----------------------------------")
+print(f"EH-> {eh_rewardall_td3}")
+print("----------------------------------")
+
+# Print SD selection frequencies
+print("SD Selection Frequencies:")
+print(f"SD 0 selections per episode: {sd0_selections}")
+print(f"SD 1 selections per episode: {sd1_selections}")
 print("----------------------------------")
 # === Plotting ===
 fig, ax = plt.subplots()

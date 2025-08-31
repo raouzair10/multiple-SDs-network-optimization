@@ -6,10 +6,10 @@ from scipy.ndimage import gaussian_filter1d
 # Set the style for better-looking plots
 plt.style.use('default')
 plt.rcParams['figure.figsize'] = (14, 10)
-plt.rcParams['font.size'] = 12
+plt.rcParams['font.size'] = 16
 plt.rcParams['axes.linewidth'] = 1.2
 plt.rcParams['grid.linewidth'] = 0.8
-plt.rcParams['grid.alpha'] = 0.3
+plt.rcParams['grid.alpha'] = 0.1
 
 def smooth_data(data, sigma=1.0):
     """
@@ -53,15 +53,14 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
                 label=alg_name, alpha=0.8)
     
     # Customize the plot
-    ax.set_xlabel('Episodes', fontsize=14, fontweight='bold')
-    ax.set_ylabel(ylabel, fontsize=14, fontweight='bold')
-    ax.set_title(f'{title_suffix} Environment - {metric_name}', fontsize=16, fontweight='bold')
-    ax.grid(True, alpha=0.3)
+    ax.set_xlabel('Episodes', fontsize=18)
+    ax.set_ylabel(ylabel, fontsize=18)
+    ax.grid(True, alpha=0.1)
     
     # Place legend outside the plot area to avoid covering data
     # First try to place it in the upper right outside
     legend = ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), 
-                      fontsize=12, frameon=True, fancybox=True, 
+                      fontsize=16, frameon=True, fancybox=True, 
                       shadow=True, framealpha=0.7)
     
     # If the legend would be cut off, try different positions
@@ -76,18 +75,19 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     if bbox_data.x1 > 0.95:
         legend.remove()
         if 'Energy Efficiency' in metric_name and env_name in ['MRC', 'Simple', 'SC']:
-            ax.legend(loc='upper right', fontsize=12, frameon=True, 
+            ax.legend(loc='upper right', fontsize=16, frameon=True, 
                      fancybox=True, shadow=True, framealpha=0.7)
         elif 'Sum Rate' in metric_name:
-            ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=12, frameon=True, 
+            ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=16, frameon=True, 
                      fancybox=True, shadow=True, framealpha=0.7)
         else:
-            ax.legend(loc='center right', fontsize=12, frameon=True, 
+            ax.legend(loc='center right', fontsize=16, frameon=True, 
                      fancybox=True, shadow=True, framealpha=0.7)
     
     # Set x-axis limits and ticks
     ax.set_xlim(0, min_length)
     ax.set_xticks(np.arange(0, min_length + 1, min_length // 8))
+    ax.tick_params(axis='both', which='major', labelsize=16)
     
     # Set y-axis limits based on data range
     all_data = []
@@ -128,9 +128,12 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
         
         # Set specific y-axis ticks
         axins.set_yticks([0, 5])
+        
+        # Set tick label sizes for inset
+        axins.tick_params(axis='both', which='major', labelsize=12)
 
         # Customize inset
-        axins.grid(True, alpha=0.3)
+        axins.grid(True, alpha=0.1)
         
         # Add connecting lines to show the zoomed area
         ax.indicate_inset_zoom(axins, edgecolor='black', alpha=0.5)
@@ -249,33 +252,37 @@ def main():
         print(f"Creating energy efficiency plot for {env_name}...")
         fig_ee = plot_metric_comparison(env_name, ee_data[env_name], env_name, 
                                        "Energy Efficiency", "Average Energy Efficiency (b/J)")
-        filename_ee = f'energy_efficiency_{env_name.lower()}_environment.png'
-        fig_ee.savefig(filename_ee, dpi=300, bbox_inches='tight')
-        print(f"Saved: {filename_ee}")
+        filename_ee_png = f'energy_efficiency_{env_name.lower()}_environment.png'
+        filename_ee_eps = f'energy_efficiency_{env_name.lower()}_environment.eps'
+        fig_ee.savefig(filename_ee_png, dpi=300, bbox_inches='tight')
+        fig_ee.savefig(filename_ee_eps, format='eps', bbox_inches='tight')
+        print(f"Saved: {filename_ee_png} and {filename_ee_eps}")
         plt.close(fig_ee)
         
         # Sum Rate plots
         print(f"Creating sum rate plot for {env_name}...")
         fig_sr = plot_metric_comparison(env_name, sr_data[env_name], env_name, 
                                        "Sum Rate", "Sum Rate")
-        filename_sr = f'sum_rate_{env_name.lower()}_environment.png'
-        fig_sr.savefig(filename_sr, dpi=300, bbox_inches='tight')
-        print(f"Saved: {filename_sr}")
+        filename_sr_png = f'sum_rate_{env_name.lower()}_environment.png'
+        filename_sr_eps = f'sum_rate_{env_name.lower()}_environment.eps'
+        fig_sr.savefig(filename_sr_png, dpi=300, bbox_inches='tight')
+        fig_sr.savefig(filename_sr_eps, format='eps', bbox_inches='tight')
+        print(f"Saved: {filename_sr_png} and {filename_sr_eps}")
         plt.close(fig_sr)
     
     print("\n" + "="*50)
     print("All plots have been created successfully!")
     print("="*50)
-    print("Energy Efficiency plots:")
-    print("- energy_efficiency_simple_environment.png")
-    print("- energy_efficiency_egc_environment.png") 
-    print("- energy_efficiency_mrc_environment.png")
-    print("- energy_efficiency_sc_environment.png")
-    print("\nSum Rate plots:")
-    print("- sum_rate_simple_environment.png")
-    print("- sum_rate_egc_environment.png") 
-    print("- sum_rate_mrc_environment.png")
-    print("- sum_rate_sc_environment.png")
+    print("Energy Efficiency plots (PNG & EPS):")
+    print("- energy_efficiency_simple_environment.png/.eps")
+    print("- energy_efficiency_egc_environment.png/.eps") 
+    print("- energy_efficiency_mrc_environment.png/.eps")
+    print("- energy_efficiency_sc_environment.png/.eps")
+    print("\nSum Rate plots (PNG & EPS):")
+    print("- sum_rate_simple_environment.png/.eps")
+    print("- sum_rate_egc_environment.png/.eps") 
+    print("- sum_rate_mrc_environment.png/.eps")
+    print("- sum_rate_sc_environment.png/.eps")
     print("="*50)
 
 if __name__ == "__main__":

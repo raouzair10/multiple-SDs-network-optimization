@@ -2,14 +2,14 @@ import optuna
 import numpy as np
 import torch
 from mappo import MAPPO
-from env_simple import Env_cellular as env_simple
+from env_egc import Env_cellular as env_egc
 from buffer import RolloutBuffer
 
 # === Fixed Hyperparameters ===
 Emax = 0.3
 num_PDs = 2
 num_SDs = 2
-L = 2
+L = 3
 T = 1
 eta = 0.7
 Pn = 1
@@ -37,7 +37,7 @@ fading_PD_SD = np.zeros((num_PDs, num_SDs))
 # Setup EGC diversity
 for i in range(num_PDs):
     for j in range(num_SDs):
-        fading_PD_SD[i][j] = np.random.choice(hnx[i][j])
+        fading_PD_SD[i][j] = np.sum(hnx[i][j]) ** 2
 
 def choose_SD(state):
     sd_qualities = []
@@ -63,8 +63,8 @@ def objective(trial):
     torch.manual_seed(0)
     
     # Create environment
-    env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax,
-                     w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
+    env = env_egc(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, L, T, eta, Pn, Pmax,
+                  w_d, w_egc, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
     
     # Create MAPPO agent with suggested hyperparameters
     mappo_agent = MAPPO(num_SDs, 4, s_dim, 1, action_std_init, gamma, eps_clip, K_epochs, buffer_size, lr_actor, lr_critic)

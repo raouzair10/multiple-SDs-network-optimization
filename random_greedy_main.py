@@ -10,7 +10,7 @@ from env_mrc import Env_cellular as env_mrc
 Emax = 0.3
 num_PDs = 2
 num_SDs = 2
-L = 2
+L = 3
 T = 1
 eta = 0.7
 Pn = 1
@@ -78,6 +78,12 @@ eh_rewardall_greedy, eh_rewardall_random = [], []
 ee_rewardall_greedy, ee_rewardall_random = [], []
 dr_rewardall_greedy, dr_rewardall_random = [], []
 
+# Lists to store SD selection frequencies for each episode
+sd0_selections_greedy = []
+sd1_selections_greedy = []
+sd0_selections_random = []
+sd1_selections_random = []
+
 for i in range(MAX_EPISODES):
     s = []
     battery_init = env.reset()
@@ -90,9 +96,22 @@ for i in range(MAX_EPISODES):
     ep_eh_greedy = ep_eh_random = 0
     ep_ee_greedy = ep_ee_random = 0
     ep_dr_greedy = ep_dr_random = 0
+    
+    # Counters for this episode
+    sd0_count_greedy = 0
+    sd1_count_greedy = 0
+    sd0_count_random = 0
+    sd1_count_random = 0
 
     for j in range(MAX_EP_STEPS):
         sd_greedy, _ = choose_SD(s_greedy)
+        
+        # Count SD selections for greedy
+        if sd_greedy == 0:
+            sd0_count_greedy += 1
+        elif sd_greedy == 1:
+            sd1_count_greedy += 1
+            
         r_greedy, s_next_greedy, EHG, ee_greedy, dr_greedy = env.step_greedy(s_greedy / state_am, sd_greedy, j + i)
         s_greedy = s_next_greedy * state_am
         ep_eh_greedy += EHG
@@ -100,12 +119,25 @@ for i in range(MAX_EPISODES):
         ep_dr_greedy += dr_greedy
 
         sd_random, _ = choose_SD(s_random)
+        
+        # Count SD selections for random
+        if sd_random == 0:
+            sd0_count_random += 1
+        elif sd_random == 1:
+            sd1_count_random += 1
+            
         r_random, s_next_random, EHR, ee_random, dr_random = env.step_random(s_random / state_am, sd_random, j + i)
         s_random = s_next_random * state_am
         ep_eh_random += EHR
         ep_ee_random += ee_random
         ep_dr_random += dr_random
 
+    # Store the counts for this episode
+    sd0_selections_greedy.append(sd0_count_greedy)
+    sd1_selections_greedy.append(sd1_count_greedy)
+    sd0_selections_random.append(sd0_count_random)
+    sd1_selections_random.append(sd1_count_random)
+    
     eh_rewardall_greedy.append(ep_eh_greedy / MAX_EP_STEPS)
     eh_rewardall_random.append(ep_eh_random / MAX_EP_STEPS)
     ee_rewardall_greedy.append(ep_ee_greedy / MAX_EP_STEPS)
@@ -121,10 +153,22 @@ print(f"SUMRATE-> {dr_rewardall_random}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall_random}")
 print("----------------------------------")
+print(f"EH-> {eh_rewardall_random}")
+print("----------------------------------")
 print("greedy")
 print(f"SUMRATE-> {dr_rewardall_greedy}")
 print("----------------------------------")
 print(f"EE-> {ee_rewardall_greedy}")
+print("----------------------------------")
+print(f"EH-> {eh_rewardall_greedy}")
+print("----------------------------------")
+
+# Print SD selection frequencies
+print("SD Selection Frequencies:")
+print(f"Greedy - SD 0 selections per episode: {sd0_selections_greedy}")
+print(f"Greedy - SD 1 selections per episode: {sd1_selections_greedy}")
+print(f"Random - SD 0 selections per episode: {sd0_selections_random}")
+print(f"Random - SD 1 selections per episode: {sd1_selections_random}")
 print("----------------------------------")
 # === PLOTTING ===
 # Sum Rate Plot
