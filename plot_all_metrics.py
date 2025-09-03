@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from plots import *
+from plots_ee import *
+from plots_sr_eh import *
 from scipy.ndimage import gaussian_filter1d
 
 # Set the style for better-looking plots
@@ -23,14 +24,14 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     """
     fig, ax = plt.subplots(figsize=(14, 8))
     
-    # Define colors and linestyles for each algorithm
+    # Define colors, linestyles, and markers for each algorithm
     algorithms = {
-        'MADDPG': {'color': 'blue', 'linestyle': '-'},
-        'MATD3': {'color': 'green', 'linestyle': '-'},
-        'MASAC': {'color': 'brown', 'linestyle': '-'},
-        'MAPPO': {'color': 'red', 'linestyle': '-'},
-        'Greedy': {'color': 'purple', 'linestyle': '-'},
-        'Random': {'color': 'yellow', 'linestyle': '-'}
+        'MADDPG': {'color': 'blue', 'linestyle': '-', 'marker': '^'},
+        'MATD3': {'color': 'green', 'linestyle': '-', 'marker': 's'},
+        'MASAC': {'color': 'lightblue', 'linestyle': '-', 'marker': 'v'},
+        'MAPPO': {'color': 'red', 'linestyle': '-', 'marker': 'D'},
+        'Greedy': {'color': 'orange', 'linestyle': '-', 'marker': 'o'},
+        'Random': {'color': 'black', 'linestyle': '-', 'marker': 'x'}
     }
     
     # Find the minimum length among all algorithms for this environment
@@ -45,23 +46,25 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
         
         color = algorithms[alg_name]['color']
         linestyle = algorithms[alg_name]['linestyle']
+        marker = algorithms[alg_name]['marker']
         
         episodes = np.arange(1, min_length + 1)
         
         ax.plot(episodes, smoothed_data, color=color, 
-                linestyle=linestyle, linewidth=2, 
-                label=alg_name, alpha=0.8)
+                linestyle=linestyle, linewidth=2, marker=marker, 
+                markersize=6, markevery=10, label=alg_name, alpha=0.8)
     
     # Customize the plot
     ax.set_xlabel('Episodes', fontsize=18)
     ax.set_ylabel(ylabel, fontsize=18)
-    ax.grid(True, alpha=0.1)
+    ax.grid(True, color='lightgray', linewidth=0.5)
     
     # Place legend outside the plot area to avoid covering data
     # First try to place it in the upper right outside
     legend = ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), 
-                      fontsize=16, frameon=True, fancybox=True, 
-                      shadow=True, framealpha=0.7)
+                      fontsize=16, frameon=True, edgecolor="black")
+    legend.get_frame().set_alpha(None)
+    legend.get_frame().set_facecolor((1, 1, 1, 0))
     
     # If the legend would be cut off, try different positions
     fig = ax.get_figure()
@@ -72,17 +75,25 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     # If legend extends beyond figure bounds, move it to center right inside
     # For MRC, Simple, and SC energy efficiency plots, use top right
     # For sum rate plots, use lower right
+    # For energy harvesting plots, use lower right with adjusted position
     if bbox_data.x1 > 0.95:
         legend.remove()
         if 'Energy Efficiency' in metric_name and env_name in ['MRC', 'Simple', 'SC']:
-            ax.legend(loc='upper right', fontsize=16, frameon=True, 
-                     fancybox=True, shadow=True, framealpha=0.7)
+            legend = ax.legend(loc='upper right', fontsize=16, frameon=True, edgecolor="black")
+            legend.get_frame().set_alpha(None)
+            legend.get_frame().set_facecolor((1, 1, 1, 0))
         elif 'Sum Rate' in metric_name:
-            ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=16, frameon=True, 
-                     fancybox=True, shadow=True, framealpha=0.7)
+            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=16, frameon=True, edgecolor="black")
+            legend.get_frame().set_alpha(None)
+            legend.get_frame().set_facecolor((1, 1, 1, 0))
+        elif 'Energy Harvesting' in metric_name:
+            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.3), fontsize=16, frameon=True, edgecolor="black")
+            legend.get_frame().set_alpha(None)
+            legend.get_frame().set_facecolor((1, 1, 1, 0))
         else:
-            ax.legend(loc='center right', fontsize=16, frameon=True, 
-                     fancybox=True, shadow=True, framealpha=0.7)
+            legend = ax.legend(loc='center right', fontsize=16, frameon=True, edgecolor="black")
+            legend.get_frame().set_alpha(None)
+            legend.get_frame().set_facecolor((1, 1, 1, 0))
     
     # Set x-axis limits and ticks
     ax.set_xlim(0, min_length)
@@ -100,11 +111,18 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     y_min = np.min(all_data) * 0.95
     ax.set_ylim(y_min, y_max)
     
+    # Use custom formatting for energy harvesting y-axis (show values in mJ without scientific notation)
+    if 'Energy Harvesting' in metric_name:
+        # Convert values to mJ (multiply by 1000) and format without scientific notation
+        ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x*1000:.1f}'))
+        # Update y-axis label to show mJ unit
+        ax.set_ylabel('Energy Harvesting (mJ)', fontsize=18)
+    
     # Add horizontal line at y=0 for reference
     ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
     
-    # Add zoomed-in inset for Greedy and Random algorithms (only for energy efficiency plots)
-    if 'Greedy' in env_data and 'Random' in env_data and 'Energy Efficiency' in metric_name:
+    # Add zoomed-in inset for Greedy and Random algorithms (for all plot types except Sum Rate)
+    if 'Greedy' in env_data and 'Random' in env_data and 'Sum Rate' not in metric_name:
         # Create inset axes for zoom
         axins = ax.inset_axes([0.35, 0.05, 0.15, 0.08])  # [x, y, width, height]
         
@@ -117,23 +135,39 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
         
         episodes = np.arange(1, min_length + 1)
         
-        axins.plot(episodes, smoothed_greedy, color='purple', linewidth=2, label='Greedy', alpha=0.8)
-        axins.plot(episodes, smoothed_random, color='yellow', linewidth=2, label='Random', alpha=0.8)
+        axins.plot(episodes, smoothed_greedy, color='orange', linewidth=2, marker='o', markersize=4, markevery=2, label='Greedy', alpha=0.8)
+        axins.plot(episodes, smoothed_random, color='black', linewidth=2, marker='x', markersize=4, markevery=2, label='Random', alpha=0.8)
+        
+        # Set appropriate y-axis limits based on metric type
+        if 'Energy Efficiency' in metric_name:
+            axins.set_ylim(-2.5, 5)  # Fixed y-axis range for energy efficiency
+        elif 'Sum Rate' in metric_name:
+            # For sum rate, use data-dependent range but ensure it's visible
+            greedy_range = np.ptp(smoothed_greedy)
+            random_range = np.ptp(smoothed_random)
+            max_range = max(greedy_range, random_range)
+            if max_range < 0.1:  # If range is very small, use fixed range
+                axins.set_ylim(0, 0.2)
+            else:
+                y_min = min(np.min(smoothed_greedy), np.min(smoothed_random)) * 0.9
+                y_max = max(np.max(smoothed_greedy), np.max(smoothed_random)) * 1.1
+                axins.set_ylim(y_min, y_max)
+        elif 'Energy Harvesting' in metric_name:
+            # For energy harvesting, use a smaller fixed range for better visibility
+            axins.set_ylim(0, 0.0003)  # Fixed smaller y-axis range for energy harvesting
+            # Use same mJ formatting for inset
+            axins.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x*1000:.1f}'))
         
         axins.set_xlim(80, 90)  # Fixed range from episode 80 to 90
-        axins.set_ylim(-2.5, 5)  # Fixed y-axis range from -2.5 to 5
         
         # Set specific x-axis ticks
         axins.set_xticks([80, 85, 90])
-        
-        # Set specific y-axis ticks
-        axins.set_yticks([0, 5])
         
         # Set tick label sizes for inset
         axins.tick_params(axis='both', which='major', labelsize=12)
 
         # Customize inset
-        axins.grid(True, alpha=0.1)
+        axins.grid(True, color='lightgray', linewidth=0.5)
         
         # Add connecting lines to show the zoomed area
         ax.indicate_inset_zoom(axins, edgecolor='black', alpha=0.5)
@@ -192,17 +226,7 @@ def prepare_energy_efficiency_data():
     }
 
 def prepare_sum_rate_data():
-    # Simple environment data
-    simple_data = {
-        'MADDPG': sr_ddpg_simple,
-        'MATD3': sr_td3_simple,
-        'MASAC': sr_sac_simple,
-        'MAPPO': sr_ppo_simple,
-        'Greedy': sr_greedy_simple,
-        'Random': sr_random_simple
-    }
-    
-    # EGC environment data
+    # Only EGC environment data from plots_sr_eh.py
     egc_data = {
         'MADDPG': sr_ddpg_egc,
         'MATD3': sr_td3_egc,
@@ -212,43 +236,36 @@ def prepare_sum_rate_data():
         'Random': sr_random_egc
     }
     
-    # MRC environment data
-    mrc_data = {
-        'MADDPG': sr_ddpg_mrc,
-        'MATD3': sr_td3_mrc,
-        'MASAC': sr_sac_mrc,
-        'MAPPO': sr_ppo_mrc,
-        'Greedy': sr_greedy_mrc,
-        'Random': sr_random_mrc
+    return {
+        'EGC': egc_data
     }
-    
-    # SC environment data
-    sc_data = {
-        'MADDPG': sr_ddpg_sc,
-        'MATD3': sr_td3_sc,
-        'MASAC': sr_sac_sc,
-        'MAPPO': sr_ppo_sc,
-        'Greedy': sr_greedy_sc,
-        'Random': sr_random_sc
+
+def prepare_energy_harvesting_data():
+    # Only EGC environment data from plots_sr_eh.py
+    egc_data = {
+        'MADDPG': eh_ddpg_egc,
+        'MATD3': eh_td3_egc,
+        'MASAC': eh_sac_egc,
+        'MAPPO': eh_ppo_egc,
+        'Greedy': eh_greedy_egc,
+        'Random': eh_random_egc
     }
     
     return {
-        'Simple': simple_data,
-        'EGC': egc_data,
-        'MRC': mrc_data,
-        'SC': sc_data
+        'EGC': egc_data
     }
 
 def main():
-    # Get environment data for both metrics
+    # Get environment data for all metrics
     ee_data = prepare_energy_efficiency_data()
     sr_data = prepare_sum_rate_data()
+    eh_data = prepare_energy_harvesting_data()
     
     # Create plots for each environment and metric
     for env_name in ['Simple', 'EGC', 'MRC', 'SC']:
         print(f"\nProcessing {env_name} environment...")
         
-        # Energy Efficiency plots
+        # Energy Efficiency plots for all environments
         print(f"Creating energy efficiency plot for {env_name}...")
         fig_ee = plot_metric_comparison(env_name, ee_data[env_name], env_name, 
                                        "Energy Efficiency", "Average Energy Efficiency (b/J)")
@@ -258,31 +275,41 @@ def main():
         fig_ee.savefig(filename_ee_eps, format='eps', bbox_inches='tight')
         print(f"Saved: {filename_ee_png} and {filename_ee_eps}")
         plt.close(fig_ee)
-        
-        # Sum Rate plots
-        print(f"Creating sum rate plot for {env_name}...")
-        fig_sr = plot_metric_comparison(env_name, sr_data[env_name], env_name, 
-                                       "Sum Rate", "Sum Rate")
-        filename_sr_png = f'sum_rate_{env_name.lower()}_environment.png'
-        filename_sr_eps = f'sum_rate_{env_name.lower()}_environment.eps'
-        fig_sr.savefig(filename_sr_png, dpi=300, bbox_inches='tight')
-        fig_sr.savefig(filename_sr_eps, format='eps', bbox_inches='tight')
-        print(f"Saved: {filename_sr_png} and {filename_sr_eps}")
-        plt.close(fig_sr)
+    
+    # Sum Rate plots only for EGC environment
+    print(f"\nCreating sum rate plot for EGC environment...")
+    fig_sr = plot_metric_comparison('EGC', sr_data['EGC'], 'EGC', 
+                                   "Sum Rate", "Sum Rate")
+    filename_sr_png = f'sum_rate_egc_environment.png'
+    filename_sr_eps = f'sum_rate_egc_environment.eps'
+    fig_sr.savefig(filename_sr_png, dpi=300, bbox_inches='tight')
+    fig_sr.savefig(filename_sr_eps, format='eps', bbox_inches='tight')
+    print(f"Saved: {filename_sr_png} and {filename_sr_eps}")
+    plt.close(fig_sr)
+    
+    # Energy Harvesting plots only for EGC environment
+    print(f"\nCreating energy harvesting plot for EGC environment...")
+    fig_eh = plot_metric_comparison('EGC', eh_data['EGC'], 'EGC', 
+                                   "Energy Harvesting", "Energy Harvesting")
+    filename_eh_png = f'energy_harvesting_egc_environment.png'
+    filename_eh_eps = f'energy_harvesting_egc_environment.eps'
+    fig_eh.savefig(filename_eh_png, dpi=300, bbox_inches='tight')
+    fig_eh.savefig(filename_eh_eps, format='eps', bbox_inches='tight')
+    print(f"Saved: {filename_eh_png} and {filename_eh_eps}")
+    plt.close(fig_eh)
     
     print("\n" + "="*50)
     print("All plots have been created successfully!")
     print("="*50)
-    print("Energy Efficiency plots (PNG & EPS):")
+    print("Energy Efficiency plots (PNG & EPS) for all environments:")
     print("- energy_efficiency_simple_environment.png/.eps")
     print("- energy_efficiency_egc_environment.png/.eps") 
     print("- energy_efficiency_mrc_environment.png/.eps")
     print("- energy_efficiency_sc_environment.png/.eps")
-    print("\nSum Rate plots (PNG & EPS):")
-    print("- sum_rate_simple_environment.png/.eps")
-    print("- sum_rate_egc_environment.png/.eps") 
-    print("- sum_rate_mrc_environment.png/.eps")
-    print("- sum_rate_sc_environment.png/.eps")
+    print("\nSum Rate plot (PNG & EPS) for EGC environment only:")
+    print("- sum_rate_egc_environment.png/.eps")
+    print("\nEnergy Harvesting plot (PNG & EPS) for EGC environment only:")
+    print("- energy_harvesting_egc_environment.png/.eps")
     print("="*50)
 
 if __name__ == "__main__":

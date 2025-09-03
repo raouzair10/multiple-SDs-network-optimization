@@ -159,32 +159,12 @@ else:   # simple (no diversity)
             #  [PD2-SD1 PD2SD2]]
     env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
-def choose_SD(s):
-    sd_qualities = []
-    for sd_index in range(num_SDs):
-        sd = []
-        sd.append(s[0][sd_index * 3])  # hn-SDj-PDi
-        sd.append(s[0][sd_index * 3 + 1])  # hn-SDj-BS
-        sd.append(s[0][sd_index * 3 + 2]) # battery level
-
-        sd = np.array(sd)
-        min_val = np.min(sd)
-        max_val = np.max(sd)
-
-        sd = (sd - min_val) / (max_val - min_val)
-        sd_quality = np.sum(sd)
-        sd_qualities.append(sd_quality)
-
-    # Choose SD with best quality
-    if np.random.rand() < 0.1: # 10% random selection.
-        best_sd_index = np.random.randint(num_SDs)
-    else:
-        best_sd_index = np.argmax(sd_qualities)
-    
-    s_l = s[0][best_sd_index * (s.shape[1] // num_SDs): (best_sd_index + 1) * (s.shape[1] // num_SDs)]
-    s_local = np.append(s_l, s[0][-1])  # [[hn-SDj-PDi hn-SDj-BS battery-SDj hn-PDi-BS]]
-
-    return best_sd_index
+def choose_SD(state):
+    scores = []
+    for sd in range(num_SDs):
+        norm = state[0][sd * 3:(sd + 1) * 3]
+        scores.append(np.sum(norm / (np.max(norm) + 1e-8)))
+    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(scores)
         
 #---------------------------------Initializing DDPG Agent--------------------------------------------------------------
 

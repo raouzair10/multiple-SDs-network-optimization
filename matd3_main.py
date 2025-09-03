@@ -79,15 +79,13 @@ matd3_agent = MATD3(s_dim, a_dim, num_SDs, lr_actor=LR_A, lr_critic=LR_C,
                     gamma=GAMMA, tau=TAU, max_size=MEMORY_CAPACITY, batch_size=BATCH_SIZE,
                     policy_noise=0.1, noise_clip=0.5, policy_delay=5)
 
-# === Helper: SD Selection ===
+# === Device selection ===
 def choose_SD(state):
-    sd_qualities = []
+    scores = []
     for sd in range(num_SDs):
-        sd_state = state[0][sd * 3:(sd + 1) * 3]
-        norm = (sd_state - np.min(sd_state)) / (np.max(sd_state) - np.min(sd_state) + 1e-8)
-        quality = np.sum(norm)
-        sd_qualities.append(quality)
-    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(sd_qualities)
+        norm = state[0][sd * 3:(sd + 1) * 3]
+        scores.append(np.sum(norm / (np.max(norm) + 1e-8)))
+    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(scores)
 
 # === Training ===
 dr_rewardall_td3 = []
@@ -146,6 +144,7 @@ for ep in range(MAX_EPISODES):
     ee_rewardall_td3.append(ee / MAX_EP_STEPS)
     eh_rewardall_td3.append(eh)
     print(f"[Episode {ep}] SR -> MATD3: {sr/MAX_EP_STEPS:.4f} - EE -> MATD3: {ee/MAX_EP_STEPS:.4f} - EH -> MATD3: {eh:.4f}")
+    print(f"  SD Counts: SD0={sd0_count}, SD1={sd1_count}")
 print("matd3")
 print(f"SUMRATE-> {dr_rewardall_td3}")
 print("----------------------------------")
@@ -186,4 +185,19 @@ ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 fig.savefig(f"matd3_avg_ee_{diversity_mode}.eps", format="eps", bbox_inches="tight")
 fig.savefig(f"matd3_avg_ee_{diversity_mode}.png", format="png", bbox_inches="tight")
+plt.show()
+
+fig, ax = plt.subplots()
+ax.plot(eh_rewardall_td3, "s-", label='MATD3', linewidth=0.75, color='green')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Energy Harvested")
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+ax.legend(facecolor='none').set_draggable(True)
+
+fig.savefig(f"matd3_avg_eh_{diversity_mode}.eps", format="eps", bbox_inches="tight")
+fig.savefig(f"matd3_avg_eh_{diversity_mode}.png", format="png", bbox_inches="tight")
 plt.show()

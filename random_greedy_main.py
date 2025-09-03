@@ -59,19 +59,14 @@ else:
             fading_PD_SD[i][j] = random.choice(hnx[i][j])
     env = env_simple(MAX_EP_STEPS, s_dim, location_PDs, location_SDs, Emax, num_PDs, T, eta, Pn, Pmax, w_csk, fading_PD_SD, fading_PD_BS, fading_SD_BS, num_SDs)
 
-def choose_SD(s):
-    sd_qualities = []
-    for sd_index in range(num_SDs):
-        sd = np.array([s[0][sd_index * 3],
-                       s[0][sd_index * 3 + 1],
-                       s[0][sd_index * 3 + 2]])
-        sd = (sd - sd.min()) / (sd.max() - sd.min() + 1e-8)
-        sd_qualities.append(np.sum(sd))
-    if np.random.rand() < 0.1:
-        best_sd_index = np.random.randint(num_SDs)
-    else:
-        best_sd_index = np.argmax(sd_qualities)
-    s_local = np.append(s[0][best_sd_index * 3: (best_sd_index + 1) * 3], s[0][-1])
+def choose_SD(state):
+    scores = []
+    for sd in range(num_SDs):
+        norm = state[0][sd * 3:(sd + 1) * 3]
+        scores.append(np.sum(norm / (np.max(norm) + 1e-8)))
+    
+    best_sd_index = np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(scores)
+    s_local = np.append(state[0][best_sd_index * 3: (best_sd_index + 1) * 3], state[0][-1])
     return best_sd_index, s_local
 
 eh_rewardall_greedy, eh_rewardall_random = [], []
@@ -146,6 +141,8 @@ for i in range(MAX_EPISODES):
     dr_rewardall_random.append(ep_dr_random / MAX_EP_STEPS)
 
     print(f"Episode {i}: Greedy EE={ep_ee_greedy/MAX_EP_STEPS:.4f}, Random EE={ep_ee_random/MAX_EP_STEPS:.4f}")
+    print(f"  Greedy SD Counts: SD0={sd0_count_greedy}, SD1={sd1_count_greedy}")
+    print(f"  Random SD Counts: SD0={sd0_count_random}, SD1={sd1_count_random}")
 
 
 print("random")
@@ -199,4 +196,19 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 fig.savefig(f"random_greedy_avg_ee_{diversity_mode}.png", bbox_inches="tight")
+plt.show()
+
+# Energy Harvested Plot
+fig, ax = plt.subplots()
+ax.plot(eh_rewardall_greedy, "s-", label='Greedy', linewidth=0.75, color='orange')
+ax.plot(eh_rewardall_random, "s-", label='Random', linewidth=0.75, color='black')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Energy Harvested")
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+ax.legend(facecolor='none').set_draggable(True)
+fig.savefig(f"random_greedy_avg_eh_{diversity_mode}.png", bbox_inches="tight")
 plt.show()

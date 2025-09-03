@@ -74,15 +74,13 @@ mappo_agent = MAPPO(num_SDs, 4, s_dim, 1,
                      action_std_init=0.2, gamma=0.92, eps_clip=0.5, K_epochs=3,
                      buffer_size=2000, lr_actor=0.006468776041288534, lr_critic=0.005462588876142524)
 
-# === Helper: SD Selection ===
+# === Device selection ===
 def choose_SD(state):
-    sd_qualities = []
+    scores = []
     for sd in range(num_SDs):
-        sd_state = state[0][sd * 3:(sd + 1) * 3]
-        norm = (sd_state - np.min(sd_state)) / (np.max(sd_state) - np.min(sd_state) + 1e-8)
-        quality = np.sum(norm)
-        sd_qualities.append(quality)
-    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(sd_qualities)
+        norm = state[0][sd * 3:(sd + 1) * 3]
+        scores.append(np.sum(norm / (np.max(norm) + 1e-8)))
+    return np.random.randint(num_SDs) if np.random.rand() < 0.1 else np.argmax(scores)
 
 dr_rewardall = []
 ee_rewardall = []
@@ -144,6 +142,7 @@ for ep in range(MAX_EPISODES):
     ee_rewardall.append(ee / MAX_EP_STEPS)
     eh_rewardall.append(eh)
     print(f"[Episode {ep}] SR -> MAPPO: {sr/MAX_EP_STEPS:.4f} - EE -> MAPPO: {ee/MAX_EP_STEPS:.4f} - EH -> MAPPO: {eh:.4f}")
+    print(f"  SD Counts: SD0={sd0_count}, SD1={sd1_count}")
 print("mappo")
 print(f"SUMRATE-> {dr_rewardall}")
 print("----------------------------------")
@@ -180,4 +179,17 @@ ax.minorticks_on()
 ax.tick_params(which="minor", bottom=False, left=False)
 ax.legend(facecolor='none').set_draggable(True)
 fig.savefig(f"mappo_avg_ee_{diversity_mode}.png", bbox_inches="tight")
+plt.show()
+
+fig, ax = plt.subplots()
+ax.plot(eh_rewardall, "s-", label='MAPPO', linewidth=0.75, color='green')
+ax.set_xlabel("Episodes")
+ax.set_ylabel("Energy Harvested")
+ax.margins(x=0)
+ax.set_xlim(0, MAX_EPISODES)
+ax.grid(which="both", axis='y', linestyle=':', color='lightgray', linewidth=0.5)
+ax.minorticks_on()
+ax.tick_params(which="minor", bottom=False, left=False)
+ax.legend(facecolor='none').set_draggable(True)
+fig.savefig(f"mappo_avg_eh_{diversity_mode}.png", bbox_inches="tight")
 plt.show()
