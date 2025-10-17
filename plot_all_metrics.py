@@ -8,9 +8,10 @@ from scipy.ndimage import gaussian_filter1d
 plt.style.use('default')
 plt.rcParams['figure.figsize'] = (14, 10)
 plt.rcParams['font.size'] = 16
+plt.rcParams['font.family'] = 'Times New Roman'
 plt.rcParams['axes.linewidth'] = 1.2
-plt.rcParams['grid.linewidth'] = 0.8
-plt.rcParams['grid.alpha'] = 0.1
+plt.rcParams['grid.linewidth'] = 0.2
+plt.rcParams['grid.alpha'] = 0.05
 
 def smooth_data(data, sigma=1.0):
     """
@@ -55,14 +56,14 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
                 markersize=6, markevery=10, label=alg_name, alpha=0.8)
     
     # Customize the plot
-    ax.set_xlabel('Episodes', fontsize=18)
-    ax.set_ylabel(ylabel, fontsize=18)
-    ax.grid(True, color='lightgray', linewidth=0.5)
+    ax.set_xlabel('Episodes', fontsize=30)
+    ax.set_ylabel(ylabel, fontsize=30)
+    ax.grid(True, linestyle=':', color='lightgray', linewidth=0.2)
     
     # Place legend outside the plot area to avoid covering data
     # First try to place it in the upper right outside
     legend = ax.legend(loc='center left', bbox_to_anchor=(1.02, 0.5), 
-                      fontsize=16, frameon=True, edgecolor="black")
+                      fontsize=18, frameon=True, edgecolor="black")
     legend.get_frame().set_alpha(None)
     legend.get_frame().set_facecolor((1, 1, 1, 0))
     
@@ -78,27 +79,31 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     # For energy harvesting plots, use lower right with adjusted position
     if bbox_data.x1 > 0.95:
         legend.remove()
-        if 'Energy Efficiency' in metric_name and env_name in ['MRC', 'Simple', 'SC']:
-            legend = ax.legend(loc='upper right', fontsize=16, frameon=True, edgecolor="black")
+        if 'Energy Efficiency' in metric_name and env_name in ['MRC']:
+            legend = ax.legend(loc='upper right', fontsize=18, frameon=True, edgecolor="black")
             legend.get_frame().set_alpha(None)
             legend.get_frame().set_facecolor((1, 1, 1, 0))
         elif 'Sum Rate' in metric_name:
-            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=16, frameon=True, edgecolor="black")
+            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.4), fontsize=18, frameon=True, edgecolor="black")
             legend.get_frame().set_alpha(None)
             legend.get_frame().set_facecolor((1, 1, 1, 0))
         elif 'Energy Harvesting' in metric_name:
-            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.3), fontsize=16, frameon=True, edgecolor="black")
+            legend = ax.legend(loc='center right', bbox_to_anchor=(1.0, 0.3), fontsize=18, frameon=True, edgecolor="black")
+            legend.get_frame().set_alpha(None)
+            legend.get_frame().set_facecolor((1, 1, 1, 0))
+        elif 'Energy Efficiency' in metric_name and env_name in ['Simple', 'SC']:
+            legend = ax.legend(loc='upper right', fontsize=16, frameon=True, edgecolor="black")
             legend.get_frame().set_alpha(None)
             legend.get_frame().set_facecolor((1, 1, 1, 0))
         else:
-            legend = ax.legend(loc='center right', fontsize=16, frameon=True, edgecolor="black")
+            legend = ax.legend(loc='center right', fontsize=18, frameon=True, edgecolor="black")
             legend.get_frame().set_alpha(None)
             legend.get_frame().set_facecolor((1, 1, 1, 0))
     
     # Set x-axis limits and ticks
     ax.set_xlim(0, min_length)
     ax.set_xticks(np.arange(0, min_length + 1, min_length // 8))
-    ax.tick_params(axis='both', which='major', labelsize=16)
+    ax.tick_params(axis='both', which='major', labelsize=24)
     
     # Set y-axis limits based on data range
     all_data = []
@@ -116,7 +121,7 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
         # Convert values to mJ (multiply by 1000) and format without scientific notation
         ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda x, p: f'{x*1000:.1f}'))
         # Update y-axis label to show mJ unit
-        ax.set_ylabel('Energy Harvesting (mJ)', fontsize=18)
+        ax.set_ylabel('Energy Harvesting (mJ)', fontsize=30)
     
     # Add horizontal line at y=0 for reference
     ax.axhline(y=0, color='black', linestyle='-', linewidth=0.8, alpha=0.5)
@@ -124,7 +129,10 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
     # Add zoomed-in inset for Greedy and Random algorithms (for all plot types except Sum Rate)
     if 'Greedy' in env_data and 'Random' in env_data and 'Sum Rate' not in metric_name:
         # Create inset axes for zoom
-        axins = ax.inset_axes([0.35, 0.05, 0.15, 0.08])  # [x, y, width, height]
+        if env_name == 'Simple':
+            axins = ax.inset_axes([0.35, 0.05, 0.15, 0.08])  # [x, y, width, height]
+        else:
+            axins = ax.inset_axes([0.35, 0.07, 0.15, 0.08])  # [x, y, width, height]
         
         # Plot Greedy and Random in the inset
         greedy_data = env_data['Greedy'][:min_length]
@@ -164,10 +172,10 @@ def plot_metric_comparison(env_name, env_data, title_suffix, metric_name, ylabel
         axins.set_xticks([80, 85, 90])
         
         # Set tick label sizes for inset
-        axins.tick_params(axis='both', which='major', labelsize=12)
+        axins.tick_params(axis='both', which='major', labelsize=18)
 
         # Customize inset
-        axins.grid(True, color='lightgray', linewidth=0.5)
+        axins.grid(True, linestyle=':', color='lightgray', linewidth=0.2)
         
         # Add connecting lines to show the zoomed area
         ax.indicate_inset_zoom(axins, edgecolor='black', alpha=0.5)
@@ -279,7 +287,7 @@ def main():
     # Sum Rate plots only for EGC environment
     print(f"\nCreating sum rate plot for EGC environment...")
     fig_sr = plot_metric_comparison('EGC', sr_data['EGC'], 'EGC', 
-                                   "Sum Rate", "Sum Rate")
+                                   "Sum Rate", "Sum Rate (b/s)")
     filename_sr_png = f'sum_rate_egc_environment.png'
     filename_sr_eps = f'sum_rate_egc_environment.eps'
     fig_sr.savefig(filename_sr_png, dpi=300, bbox_inches='tight')

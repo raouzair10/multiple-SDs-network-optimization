@@ -1,6 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Set global font sizes (optional, but good practice)
+plt.rcParams['font.size'] = 16 
+plt.rcParams['font.family'] = 'Times New Roman'
+
 # Import DSF data arrays from plots_dsf.py
 from plots_dsf import (
     sd0_ddpg, sd1_ddpg,
@@ -37,15 +41,18 @@ for alg_name, (sd0_data, sd1_data) in algorithms.items():
     plt.xlim(1, 200)
     plt.ylim(0, 200)
     
-    # Set labels
-    plt.xlabel('Episodes')
-    plt.ylabel('Device Selection Frequency')
+    # Set labels - UPDATED FONTSIZE TO 26
+    plt.xlabel('Episodes', fontsize=30)
+    plt.ylabel('Device Selection Frequency', fontsize=30)
     
     # Add grid with lightgray color and thin lines
-    plt.grid(True, color='lightgray', linewidth=0.5)
+    plt.grid(True, linestyle=':', color='lightgray', linewidth=0.2)
     
-    # Add legend
-    plt.legend()
+    # Add legend - UPDATED FONTSIZE TO 18
+    plt.legend(fontsize=22)
+    
+    # You might also want to increase tick label size:
+    plt.tick_params(axis='both', which='major', labelsize=24) 
     
     # Save as PNG
     plt.savefig(f'dsf_{alg_name}.png', dpi=300, bbox_inches='tight')
@@ -76,19 +83,21 @@ width = 0.35
 
 # Create bars
 su1_bars = plt.bar(x - width/2, [fairness_data[alg][0] for alg in algorithms], 
-                    width, label='SU 1', color='red', alpha=0.8)
+                     width, label='SU 1', color='red', alpha=0.8)
+
+# SU2 bars with slanted line hatch - ADDED HATCH PARAMETER
 su2_bars = plt.bar(x + width/2, [fairness_data[alg][1] for alg in algorithms], 
-                    width, label='SU 2', color='blue', alpha=0.8)
+                     width, label='SU 2', color='blue', alpha=0.8, hatch='//', edgecolor='black') # Added hatch and edgecolor for visibility
 
 # Customize the plot
-plt.xlabel('Algorithms')
-plt.ylabel('Number of times SU is selected')
-plt.title('Fairness Comparison')
-plt.xticks(x, algorithms)
+plt.xlabel('Algorithms', fontsize=30)
+plt.ylabel('Number of times SU is selected', fontsize=30)
+plt.xticks(x, algorithms, fontsize=24) 
 plt.ylim(0, 200)  # Set y-axis limit to 200
-plt.legend()
 
-# Value labels removed - bars will display without numerical values on top
+plt.legend(fontsize=22)
+
+plt.yticks(fontsize=24)
 
 # Save fairness plot
 plt.savefig('fairness_comparison.png', dpi=300, bbox_inches='tight')
