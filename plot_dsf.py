@@ -1,9 +1,18 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Set global font sizes (optional, but good practice)
+# --- GLOBAL FONT CONFIGURATION (FIXED FOR TIMES NEW ROMAN & NON-ITALIC MATH TEXT) ---
+# Set general font size
 plt.rcParams['font.size'] = 16 
+# Set general font family
 plt.rcParams['font.family'] = 'Times New Roman'
+# Force mathematical text (mathtext) to use the custom font settings
+plt.rcParams['mathtext.fontset'] = 'custom'
+# Set the roman (regular) style math font to Times New Roman
+plt.rcParams['mathtext.rm'] = 'Times New Roman'
+# FIX FOR ITALICS: Set the italic style math font to also use the regular Times New Roman font.
+plt.rcParams['mathtext.it'] = 'Times New Roman'
+# --- END FONT CONFIGURATION ---
 
 # Import DSF data arrays from plots_dsf.py
 from plots_dsf import (
@@ -34,24 +43,25 @@ for alg_name, (sd0_data, sd1_data) in algorithms.items():
     plt.figure(figsize=(10, 6))
     
     # Plot SU 1 (red line) and SU 2 (blue line) with markers at regular intervals
-    plt.plot(episodes, sd0_data, 'r-', label='SU 1', linewidth=2, marker='o', markevery=20, markersize=8)
-    plt.plot(episodes, sd1_data, 'b-', label='SU 2', linewidth=2, marker='s', markevery=20, markersize=8)
+    # UPDATED LABEL: Use \mathrm{} inside $ $ for Roman (non-italic) Times New Roman subscript
+    plt.plot(episodes, sd0_data, 'r-', label=r'$\mathrm{SU}_1$', linewidth=2, marker='o', markevery=20, markersize=8)
+    plt.plot(episodes, sd1_data, 'b-', label=r'$\mathrm{SU}_2$', linewidth=2, marker='s', markevery=20, markersize=8)
     
     # Set axis limits to 200x200
     plt.xlim(1, 200)
     plt.ylim(0, 200)
     
-    # Set labels - UPDATED FONTSIZE TO 26
+    # Set labels - FONTSIZE 30
     plt.xlabel('Episodes', fontsize=30)
     plt.ylabel('Device Selection Frequency', fontsize=30)
     
     # Add grid with lightgray color and thin lines
     plt.grid(True, linestyle=':', color='lightgray', linewidth=0.2)
     
-    # Add legend - UPDATED FONTSIZE TO 18
+    # Add legend - FONTSIZE 22
     plt.legend(fontsize=22)
     
-    # You might also want to increase tick label size:
+    # Tick label size: 24
     plt.tick_params(axis='both', which='major', labelsize=24) 
     
     # Save as PNG
@@ -77,22 +87,23 @@ fairness_data = {
 }
 
 # Set up bar positions
-algorithms = list(fairness_data.keys())
-x = np.arange(len(algorithms))
+algorithms_list = list(fairness_data.keys())
+x = np.arange(len(algorithms_list))
 width = 0.35
 
 # Create bars
-su1_bars = plt.bar(x - width/2, [fairness_data[alg][0] for alg in algorithms], 
-                     width, label='SU 1', color='red', alpha=0.8)
+# UPDATED LABEL: Use \mathrm{} inside $ $ for Roman (non-italic) Times New Roman subscript
+su1_bars = plt.bar(x - width/2, [fairness_data[alg][0] for alg in algorithms_list], 
+                     width, label=r'$\mathrm{SU}_1$', color='red', alpha=0.8)
 
 # SU2 bars with slanted line hatch - ADDED HATCH PARAMETER
-su2_bars = plt.bar(x + width/2, [fairness_data[alg][1] for alg in algorithms], 
-                     width, label='SU 2', color='blue', alpha=0.8, hatch='//', edgecolor='black') # Added hatch and edgecolor for visibility
+su2_bars = plt.bar(x + width/2, [fairness_data[alg][1] for alg in algorithms_list], 
+                     width, label=r'$\mathrm{SU}_2$', color='blue', alpha=0.8, hatch='//', edgecolor='black')
 
 # Customize the plot
 plt.xlabel('Algorithms', fontsize=30)
 plt.ylabel('Number of times SU is selected', fontsize=30)
-plt.xticks(x, algorithms, fontsize=24) 
+plt.xticks(x, algorithms_list, fontsize=24) 
 plt.ylim(0, 200)  # Set y-axis limit to 200
 
 plt.legend(fontsize=22)
